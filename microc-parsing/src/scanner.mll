@@ -1,8 +1,87 @@
 {
     open Parser
 
-    (* Put here your auxiliary definitions *)
+    exception Lexing_error of string
+
+    let create_hashtable size init =
+        let tbl = Hashtbl.create size in
+        List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
+        tbl
+
+    let keyword_table =
+    create_hashtable 8 [
+        ("if", IF);
+        ("else", ELSE);
+        ("return", RETURN);
+        ("for", FOR);
+        ("while", WHILE);
+        ("int", INT);
+        ("char", CHAR);
+        ("void", VOID);
+        ("NULL", NULL);
+        ("bool", BOOL);
+        ("true", TRUE);
+        ("false", FALSE)
+    ]
+
+
 }
 
+let digit = ['0'-'9']
+let one_to_nine = ['1'-'9']
+let int = (one_to_nine digit*) | '0'
+let char=['a'-'z' 'A'-'Z' '0'-'9']
+let id = ['a'-'z' 'A'-'Z' '_']['_' 'a'-'z' '0'-'9']*
+
 rule token = parse
-    | _ as c           { Util.raise_lexer_error lexbuf ("Illegal character " ^ Char.escaped c) }
+  | int as inum            {
+                            let num = int_of_string inum in
+			                        LINT(num)
+                           }
+  | id as word             {
+                            try
+                              Hashtbl.find keyword_table word
+                            with Not_found ->  ID(word)
+                           }
+  | '\''                   {read_char lexbuf}
+  |"'" ([^"\\"] | ("\\" ("\\" | "n" | "b" | "t" | "r")) as c) "'" {LCHAR(c)}
+  | "/*"                   {read_comment 0 lexbuf}
+  | "//"                   {read_comment 1 lexbuf}
+  | ';'                    { SEMICOLON }
+  | '+'                    { PLUS }
+  | '-'                    { MINUS }
+  | '*'                    { TIMES }
+  | '/'                    { DIV }
+  | '%'                    { MOD }    
+  | '='                    { ASSIGN }
+  | "=="                   { EQ } 
+  | "!="                   { NEQ } 
+  | '<'                    { LESS }
+  | '>'                    { GREATER }
+  | "<="                   { LEQ }
+  | ">="                   { GEQ }
+  | "&&"                   { L_AND }
+  | "||"                   { L_OR }
+  | '!'                    { NOT }
+  | '&'                    { AND }
+  | ':'                    { COLON  }
+  | ','                    { COMMA  }
+  | '{'                    { LBRACE }
+  | '}'                    { RBRACE }
+  | '['                    { LBRACK }
+  | ']'                    { RBRACK }
+  | '('                    { LPAREN }
+  | ')'                    { RPAREN }
+  | [' ' '\t']             { token lexbuf }
+  | '\n'                   { Lexing.new_line lexbuf; token lexbuf }
+  | eof                    { EOF }
+  | _ as c           { Util.raise_lexer_error lexbuf ("Illegal character " ^ Char.escaped c) }
+
+and read_comment tp = parse
+  | eof                     { if tp=0 then 
+                                Util.raise_lexer_error lexbuf ("Comments not closed") 
+                              else 
+                                EOF }
+  | '\n'                    {if tp=0 then read_comment tp lexbuf else token lexbuf}
+  | _                       {read_comment tp lexbuf}
+  
