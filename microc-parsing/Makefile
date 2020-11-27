@@ -7,7 +7,7 @@ $TARGET: default
 native: $(TARGET).native
 
 %.native:
-	ocamlbuild -use-ocamlfind $@
+	ocamlbuild -use-ocamlfind $@ 
 	mv $@ $*
 
 clean:

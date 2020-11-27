@@ -1,6 +1,6 @@
 {
     open Parser
-
+  (*| '\''                   {read_char lexbuf}*)
     exception Lexing_error of string
 
     let create_hashtable size init =
@@ -24,6 +24,17 @@
         ("false", FALSE)
     ]
 
+    let read_char c=if c.[0]=='\\' then 
+    match c.[1] with
+    | '\\' -> '\\'
+    | 'n' -> '\n'
+    | 'b' -> '\b'
+    | 't' -> '\t'
+    | 'r' -> '\r'
+    else c.[0]
+
+
+
 
 }
 
@@ -41,10 +52,11 @@ rule token = parse
   | id as word             {
                             try
                               Hashtbl.find keyword_table word
+                              
                             with Not_found ->  ID(word)
                            }
-  | '\''                   {read_char lexbuf}
-  |"'" ([^"\\"] | ("\\" ("\\" | "n" | "b" | "t" | "r")) as c) "'" {LCHAR(c)}
+  
+  |"'" ([^'\\'] | ('\\' ('\\' | 'n' | 'b' | 't' | 'r'))) as c "'" {LCHAR(read_char c)}
   | "/*"                   {read_comment 0 lexbuf}
   | "//"                   {read_comment 1 lexbuf}
   | ';'                    { SEMICOLON }
@@ -73,7 +85,7 @@ rule token = parse
   | '('                    { LPAREN }
   | ')'                    { RPAREN }
   | [' ' '\t']             { token lexbuf }
-  | '\n'                   { Lexing.new_line lexbuf; token lexbuf }
+  | '\n' | '\r'                   { Lexing.new_line lexbuf; token lexbuf }
   | eof                    { EOF }
   | _ as c           { Util.raise_lexer_error lexbuf ("Illegal character " ^ Char.escaped c) }
 
@@ -84,4 +96,7 @@ and read_comment tp = parse
                                 EOF }
   | '\n'                    {if tp=0 then read_comment tp lexbuf else token lexbuf}
   | _                       {read_comment tp lexbuf}
+
+
+
   
