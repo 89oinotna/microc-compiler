@@ -40,14 +40,16 @@
 
 
 /* Precedence and associativity specification */
+%right DEREF
 %right ASSIGN
+
 %left L_OR
 %left L_AND
 %left EQ NEQ
 %nonassoc GREATER LESS LEQ GEQ
 %left PLUS MINUS
 %left TIMES DIV MOD
-%nonassoc NOT AND
+%nonassoc NOT AND UMINUS
 %nonassoc LBRACK
 
 
@@ -62,11 +64,10 @@
 
 program:
   | l=list(topdecl) EOF               {Prog(l)}
-  | EOF                               {Prog([])}
 ;
 
 topdecl:
-  | tp=typ id=ID LPAREN fd=separated_list(COMMA, funvar) LBRACE b=list(stmtordec) RBRACE
+  | tp=typ id=ID LPAREN fd=separated_list(COMMA, funvar) RPAREN LBRACE b=list(stmtordec) RBRACE
                                       {Fundecl({typ=tp; fname=id; formals=fd; body=(Block(b)|@| $loc)}) |@| $loc}
   | vd=vardec SEMICOLON               {vd |@| $loc}
 ;
@@ -78,6 +79,7 @@ typ:
   | VOID  {TypV}
 ;
 
+(*negli array dec devo aspettarmi some(int)*)
 funvar:
   | tp=typ id=ID LBRACK i=option(LINT) RBRACK {(TypA(tp, i), id)}
   | tp=typ TIMES id=ID                {(TypP(tp), id)}
@@ -100,14 +102,30 @@ stmtordec:
   | st=stmt                        {Stmt(st) |@| $loc}
 ;
 
-stmt:
-  | IF LPAREN cond=expr RPAREN st1=stmt ELSE st2=stmt            
-                                        {If(cond, st1, st2) |@| $loc}
-  | WHILE LPAREN cond=expr RPAREN LBRACE body=list(stmtordec) RBRACE
-                                        {While(cond, Block(body)|@| $loc) |@| $loc}
+block_stmt:
   | e=expr SEMICOLON                    {Expr(e) |@| $loc}
   | RETURN e=option(expr) SEMICOLON     {Return(e) |@| $loc}
   | LBRACE body=list(stmtordec) RBRACE  {Block(body) |@| $loc}
+  | IF LPAREN cond=expr RPAREN st1=block_stmt  
+                                      {If(cond, st1, Block([])|@| $loc) |@| $loc}
+
+stmt:
+  | IF LPAREN cond=expr RPAREN st1=block_stmt ELSE st2=block_stmt      
+                                        {If(cond, st1, st2) |@| $loc}
+  | WHILE LPAREN cond=expr RPAREN st=block_stmt(*LBRACE body=list(stmtordec) RBRACE*)
+                                        {While(cond, st) |@| $loc}
+  | FOR LPAREN e1=expr SEMICOLON e2=expr SEMICOLON e3=expr RPAREN st=block_stmt (* LBRACE body=list(stmtordec) RBRACE *)
+                                        {Block([
+                                          Stmt(Expr(e1)|@| $loc) |@| $loc;
+                                          Stmt( 
+                                            While(e2, Block(
+                                              [(Stmt(st)|@| $loc); 
+                                                Stmt(Expr(e3)|@| $loc)|@| $loc])|@| $loc
+                                              (*Block(body@[Stmt(Expr(e3)|@| $loc) |@| $loc]) |@| $loc*)
+                                            ) |@| $loc
+                                          )|@| $loc
+                                        ]) |@| $loc}
+  | st=block_stmt                   {st}
 
 
 ;
@@ -115,15 +133,15 @@ stmt:
 
 
 expr:
-  | a=access ASSIGN e=expr              {Assign(a, e) |@| $loc}
-  | a=access                            {Access(a) |@| $loc}
+  | a=access ASSIGN e=expr             {Assign(a, e) |@| $loc}
+  | a=access %prec DEREF                {Access(a) |@| $loc}
   | AND a=access                        {Addr(a) |@| $loc}
   | i=LINT                              {ILiteral(i) |@| $loc}
   | c=LCHAR                             {CLiteral(c) |@| $loc}
   | TRUE                                {BLiteral(true) |@| $loc}
   | FALSE                               {BLiteral(false) |@| $loc}
   | NOT e=expr                          {UnaryOp(Not, e) |@| $loc}
-  | MINUS e=expr                        {UnaryOp(Neg, e) |@| $loc}
+  | MINUS e=expr  %prec UMINUS          {UnaryOp(Neg, e) |@| $loc}
   | e1 = expr PLUS e2 = expr
     { BinaryOp(Add, e1, e2) |@| $loc }
   | e1 = expr MINUS e2 = expr
@@ -152,6 +170,7 @@ expr:
     { BinaryOp(And, e1, e2) |@| $loc }
   | id=ID LPAREN l=separated_list(COMMA, expr) RPAREN
     {Call(id, l) |@| $loc}
+  |LPAREN e=expr RPAREN {e}
 ;
 
 access:

@@ -2,7 +2,7 @@
     open Parser
   (*| '\''                   {read_char lexbuf}*)
     exception Lexing_error of string
-
+    exception Char_error
     let create_hashtable size init =
         let tbl = Hashtbl.create size in
         List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
@@ -31,6 +31,7 @@
     | 'b' -> '\b'
     | 't' -> '\t'
     | 'r' -> '\r'
+    | _ -> raise Char_error
     else c.[0]
 
 
@@ -42,7 +43,7 @@ let digit = ['0'-'9']
 let one_to_nine = ['1'-'9']
 let int = (one_to_nine digit*) | '0'
 let char=['a'-'z' 'A'-'Z' '0'-'9']
-let id = ['a'-'z' 'A'-'Z' '_']['_' 'a'-'z' '0'-'9']*
+let id = ['a'-'z' 'A'-'Z' '_']['_' 'a'-'z' 'A'-'Z' '0'-'9']*
 
 rule token = parse
   | int as inum            {
@@ -56,7 +57,9 @@ rule token = parse
                             with Not_found ->  ID(word)
                            }
   
-  |"'" ([^'\\'] | ('\\' ('\\' | 'n' | 'b' | 't' | 'r'))) as c "'" {LCHAR(read_char c)}
+  |"'" ([^'\\'] | ('\\' ('\\' | 'n' | 'b' | 't' | 'r'))) as c "'" {try LCHAR(read_char c)
+                                                                    with
+                                                                    |Char_error -> Util.raise_lexer_error lexbuf ("Illegal character " ^  c)}
   | "/*"                   {read_comment 0 lexbuf}
   | "//"                   {read_comment 1 lexbuf}
   | ';'                    { SEMICOLON }
@@ -94,7 +97,8 @@ and read_comment tp = parse
                                 Util.raise_lexer_error lexbuf ("Comments not closed") 
                               else 
                                 EOF }
-  | '\n'                    {if tp=0 then read_comment tp lexbuf else token lexbuf}
+  |"*/"                     {if tp=0 then token lexbuf else read_comment tp lexbuf}      
+  | '\n' | '\r'              {Lexing.new_line lexbuf; if tp=0 then read_comment tp lexbuf else token lexbuf}
   | _                       {read_comment tp lexbuf}
 
 
