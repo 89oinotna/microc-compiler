@@ -1,21 +1,10 @@
 exception DuplicateEntry
-exception Type_error of string
+
 exception Scope_error of string
 
 
 type 'a t = int (* TODO: this is a dummy definition *)
 
-type ttype =
-| Tint
-| Tbool
-| Tchar
-| Tvoid
-| Tarr of ttype * ttype
-| Tptr of ttype
-| Tfun of ttype * ttype
-| Treturn ttype
-
-type 'a 'b entry_table={ttype:'a; annotation: 'b}
 
 let create_hashtable size init =
   let tbl = Hashtbl.create size in
@@ -23,22 +12,22 @@ let create_hashtable size init =
   tbl
 
 let base_table=create_hashtable 8 [
-  (Add, {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Sub, {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Mult, {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Div, {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Mod, {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Less, {ttype=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
-  (Greater, {ttype=Tfun(Tbool, Tfun(Tint, Tint)); annotation:None});
-  (Leq, {ttype=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
-  (Geq, {ttype=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
-  (Or, {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation: None});
-  (And, {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation: None});
-  (Not, {ttype=Tfun(Tbool, Tbool); annotation: None});
-  (Neg, {ttype=Tfun(Tint, Tint)); annotation: None});
+  (Add, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
+  (Sub, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
+  (Mult, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
+  (Div, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
+  (Mod, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
+  (Less, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
+  (Greater, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation:None});
+  (Leq, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
+  (Geq, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
+  (Or, {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation: None});
+  (And, {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation: None});
+  (Neg, {typp=Tfun(Tint, Tint)); annotation: None});
+  (Not, {typp=Tfun(Tbool, Tbool); annotation: None});
 ]
 (*
-  (Equal, {ttype=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});*)
+  (Equal, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});*)
 
 let scope_list=[base_table]
 
