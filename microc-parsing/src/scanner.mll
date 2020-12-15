@@ -9,7 +9,7 @@
         tbl
 
     let keyword_table =
-    create_hashtable 8 [
+    create_hashtable 12 [
         ("if", IF);
         ("else", ELSE);
         ("return", RETURN);
@@ -63,7 +63,9 @@ rule token = parse
   | "/*"                   {read_comment 0 lexbuf}
   | "//"                   {read_comment 1 lexbuf}
   | ';'                    { SEMICOLON }
+  | "++"                   { INC }
   | '+'                    { PLUS }
+  | "--"                   { DEC }
   | '-'                    { MINUS }
   | '*'                    { TIMES }
   | '/'                    { DIV }
@@ -98,7 +100,7 @@ and read_comment tp = parse
                               else 
                                 EOF }
   |"*/"                     {if tp=0 then token lexbuf else read_comment tp lexbuf}      
-  | '\n' | '\r'              {Lexing.new_line lexbuf; if tp=0 then read_comment tp lexbuf else token lexbuf}
+  | '\n'                    {if tp=0 then read_comment tp lexbuf else token lexbuf}
   | _                       {read_comment tp lexbuf}
 
 

@@ -30,7 +30,7 @@
 %token EOF
 %token ASSIGN
 %token IF ELSE RETURN FOR WHILE INT CHAR VOID BOOL TRUE FALSE NULL
-%token PLUS MINUS TIMES DIV MOD AND
+%token PLUS MINUS TIMES DIV MOD AND INC DEC
 %token EQ NEQ LESS GREATER LEQ GEQ L_OR L_AND NOT
 %token LPAREN RPAREN LBRACE RBRACE LBRACK RBRACK
 %token <string>ID
@@ -40,7 +40,7 @@
 
 
 /* Precedence and associativity specification */
-%right DEREF
+%right ACCESS
 %right ASSIGN
 
 %left L_OR
@@ -50,6 +50,7 @@
 %left PLUS MINUS
 %left TIMES DIV MOD
 %nonassoc NOT AND UMINUS
+%left INC DEC
 %nonassoc LBRACK
 
 
@@ -133,8 +134,8 @@ stmt:
 
 
 expr:
-  | a=access ASSIGN e=expr             {Assign(a, e) |@| $loc}
-  | a=access %prec DEREF                {Access(a) |@| $loc}
+  | a=access ASSIGN e=expr              {Assign(a, e) |@| $loc}
+  | a=access %prec ACCESS               {Access(a) |@| $loc}
   | AND a=access                        {Addr(a) |@| $loc}
   | i=LINT                              {ILiteral(i) |@| $loc}
   | c=LCHAR                             {CLiteral(c) |@| $loc}
@@ -142,6 +143,10 @@ expr:
   | FALSE                               {BLiteral(false) |@| $loc}
   | NOT e=expr                          {UnaryOp(Not, e) |@| $loc}
   | MINUS e=expr  %prec UMINUS          {UnaryOp(Neg, e) |@| $loc}
+  | e=expr INC                          {UnaryOp(Post_Inc, e) |@| $loc}
+  | e=expr DEC                          {UnaryOp(Post_Dec, e) |@| $loc}
+  | INC e=expr                          {UnaryOp(Pre_Inc, e) |@| $loc}
+  | DEC e=expr                          {UnaryOp(Pre_Dec, e) |@| $loc}
   | e1 = expr PLUS e2 = expr
     { BinaryOp(Add, e1, e2) |@| $loc }
   | e1 = expr MINUS e2 = expr
@@ -170,7 +175,6 @@ expr:
     { BinaryOp(And, e1, e2) |@| $loc }
   | id=ID LPAREN l=separated_list(COMMA, expr) RPAREN
     {Call(id, l) |@| $loc}
-  |LPAREN e=expr RPAREN {e}
 ;
 
 access:

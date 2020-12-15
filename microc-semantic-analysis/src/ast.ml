@@ -1,8 +1,10 @@
 type binop = Add | Sub | Mult | Div  | Mod | Equal | Neq | Less | Leq | 
-             Greater | Geq | And | Or | Comma
+             Greater | Geq | And | Or | Comma 
              [@@deriving show]
 
-type uop = Neg | Not [@@deriving show]
+(*type assign_op = Assign_plus | Assign_minus | Assign_mul | Assign_div | Assign_mod [@@deriving show] *)
+
+type uop = Neg | Not | Inc | Dec [@@deriving show]
 
 type identifier = string [@@deriving show]
 
@@ -44,6 +46,7 @@ and stmt = stmt_node annotated_node
 and stmt_node =                                                         
   | If of expr * stmt * stmt         (* Conditional                 *)
   | While of expr * stmt             (* While loop                  *)
+  | DoWhile of stmt * expr           (* Do while loop               *)
   | Expr of expr                     (* Expression statement   e;   *)
   | Return of expr option            (* Return statement            *)
   | Block of stmtordec list          (* Block: grouping and scope   *)

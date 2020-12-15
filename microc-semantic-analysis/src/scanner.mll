@@ -63,7 +63,9 @@ rule token = parse
   | "/*"                   {read_comment 0 lexbuf}
   | "//"                   {read_comment 1 lexbuf}
   | ';'                    { SEMICOLON }
+  | "++"                   { INC }
   | '+'                    { PLUS }
+  | "--"                   { DEC }
   | '-'                    { MINUS }
   | '*'                    { TIMES }
   | '/'                    { DIV }
