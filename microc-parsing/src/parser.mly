@@ -29,7 +29,7 @@
 
 %token EOF
 %token ASSIGN
-%token IF ELSE RETURN FOR WHILE INT CHAR VOID BOOL TRUE FALSE NULL
+%token IF ELSE RETURN FOR WHILE INT CHAR VOID BOOL TRUE FALSE NULL DO
 %token PLUS MINUS TIMES DIV MOD AND INC DEC
 %token EQ NEQ LESS GREATER LEQ GEQ L_OR L_AND NOT
 %token LPAREN RPAREN LBRACE RBRACE LBRACK RBRACK
@@ -115,6 +115,8 @@ stmt:
                                         {If(cond, st1, st2) |@| $loc}
   | WHILE LPAREN cond=expr RPAREN st=block_stmt(*LBRACE body=list(stmtordec) RBRACE*)
                                         {While(cond, st) |@| $loc}
+  | DO st=block_stmt WHILE LPAREN cond=expr RPAREN SEMICOLON
+                                        {DoWhile(st, cond) |@| $loc}
   | FOR LPAREN e1=expr SEMICOLON e2=expr SEMICOLON e3=expr RPAREN st=block_stmt (* LBRACE body=list(stmtordec) RBRACE *)
                                         {Block([
                                           Stmt(Expr(e1)|@| $loc) |@| $loc;
