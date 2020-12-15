@@ -56,10 +56,10 @@ The project is split in the following assignments:
 * **Code generation**: this assignment asks to use the LLVM toolchain to compile a MicroC program to low level code (LLVM bitcode) and to perform some simple optimizations. The material is available [here](microc-codegen/); 
 
 * **Language extensions**: this assignment asks to extend the MicroC language by considering further constructs. In particular, students are required to implement **at least four** of the following constructs: 
-    * `do-while` loops;
-    * pre/post increment/decrement operators, i.e., `++` and `--`;
-    * abbreviation for assignment operators, i.e., `+=`, `-=`, `*=`, `/=` and `%=`;
-    * variable declaration with initialization, e.g., `int i = 0`;
+    * `do-while` loops; &#8592;
+    * pre/post increment/decrement operators, i.e., `++` and `--`; &#8592;
+    * abbreviation for assignment operators, i.e., `+=`, `-=`, `*=`, `/=` and `%=`; &#8592;
+    * variable declaration with initialization, e.g., `int i = 0`; &#8592;
     * multi-dimensional arrays;
     * floating point arithmetic;
     * strings as in C, i.e. null-terminated arrays of characters;
