@@ -50,7 +50,7 @@
 %left PLUS MINUS
 %left TIMES DIV MOD
 %nonassoc NOT AND UMINUS
-%left INC DEC
+%nonassoc INC DEC
 %nonassoc LBRACK
 
 
@@ -145,10 +145,10 @@ expr:
   | FALSE                               {BLiteral(false) |@| $loc}
   | NOT e=expr                          {UnaryOp(Not, e) |@| $loc}
   | MINUS e=expr  %prec UMINUS          {UnaryOp(Neg, e) |@| $loc}
-  | e=expr INC                          {UnaryOp(Post_Inc, e) |@| $loc}
-  | e=expr DEC                          {UnaryOp(Post_Dec, e) |@| $loc}
-  | INC e=expr                          {UnaryOp(Pre_Inc, e) |@| $loc}
-  | DEC e=expr                          {UnaryOp(Pre_Dec, e) |@| $loc}
+  | a=access INC                        {UnaryOp(Post_Inc, Access(a) |@| $loc ) |@| $loc} 
+  | a=access DEC                        {UnaryOp(Post_Dec, Access(a) |@| $loc) |@| $loc}
+  | INC a=access                          {UnaryOp(Pre_Inc, Access(a) |@| $loc) |@| $loc}
+  | DEC a=access                          {UnaryOp(Pre_Dec, Access(a) |@| $loc) |@| $loc}
   | e1 = expr PLUS e2 = expr
     { BinaryOp(Add, e1, e2) |@| $loc }
   | e1 = expr MINUS e2 = expr
