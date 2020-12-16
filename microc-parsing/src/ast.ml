@@ -4,7 +4,7 @@ type binop = Add | Sub | Mult | Div  | Mod | Equal | Neq | Less | Leq |
 
 (*type assign_op = Assign_plus | Assign_minus | Assign_mul | Assign_div | Assign_mod [@@deriving show] *)
 
-type uop = Neg | Not | Pre_Inc | Pre_Dec | Post_Inc | Post_Dec [@@deriving show]
+type uop = Neg | Not | PreInc | PreDec | PostInc | PostDec [@@deriving show]
 
 type opa= Add | Sub | Div | Mult | Mod [@@deriving show]
 

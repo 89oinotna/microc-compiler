@@ -72,6 +72,11 @@ rule token = parse
   | '/'                    { DIV }
   | '%'                    { MOD }    
   | '='                    { ASSIGN }
+  | "+="                   { ADDASS }
+  | "-="                   { SUBASS }
+  | "/="                   { DIVASS }
+  | "%="                   { MODASS }
+  | "*="                   { MULTASS }
   | "=="                   { EQ } 
   | "!="                   { NEQ } 
   | '<'                    { LESS }
