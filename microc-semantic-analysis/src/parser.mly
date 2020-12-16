@@ -73,7 +73,7 @@ topdecl:
 ;
 
 typ:
-  | INT   {TypI}
+  | INT   {let a=1 in TypI}
   | CHAR  {TypC}
   | BOOL  {TypB}
   | VOID  {TypV}

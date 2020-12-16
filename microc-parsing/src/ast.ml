@@ -6,6 +6,8 @@ type binop = Add | Sub | Mult | Div  | Mod | Equal | Neq | Less | Leq |
 
 type uop = Neg | Not | Pre_Inc | Pre_Dec | Post_Inc | Post_Dec [@@deriving show]
 
+type opa= Add | Sub | Div | Mult | Mod [@@deriving show]
+
 type identifier = string [@@deriving show]
 
 type position = Lexing.position * Lexing.position 
@@ -25,6 +27,7 @@ type typ =
 and expr =  expr_node annotated_node                                                   
 and expr_node =     
   | Access of access                 (* x    or  *p    or  a[e]     *) 
+  | OpAssign of opa * access * expr  (* x+=e x-=e ...               *)
   | Assign of access * expr          (* x=e  or  *p=e  or  a[e]=e   *)
   | Addr of access                   (* &x   or  &*p   or  &a[e]    *)
   | ILiteral of int                  (* Integer literal             *)
