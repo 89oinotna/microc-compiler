@@ -22,7 +22,7 @@
 *)
   let (|@|) nd loc = { node = nd; loc = loc ; id=0} 
 
-  let compose f (g, s)=(fun x -> g(f(z)), s) (* using to compose with functions *)
+  let compose f (g, s)=((fun x -> g(f(x))), s) (* using to compose with functions *)
   
 %}
 
@@ -69,8 +69,8 @@ program:
 ;
 
 topdecl:
-  | fd=fundecl {Fundecl(fd) |@| $loc}
-  | vd=vardecl SEMICOLON               {Vardec() |@| $loc}
+  | fd=fundecl              {Fundecl(fd) |@| $loc}
+  | vd=vardecl SEMICOLON    {Vardec(fst vd, snd vd) |@| $loc}
 ;
 
 typ:
@@ -82,14 +82,15 @@ typ:
 
 
 vardesc: (* functions in the couple to reconstruct the type*)
-  | id=ID   {((fun t -> t), id)   }
-  | TIMES vd=vardesc %prec DEREF {compose TypP vd}
-  | LPAREN vd=vardesc RPAREN {vd}
-  | vd=vardesc LBRACK i=option(LINT) RBRACK {compose (fun y->TypA(y, i)) vd}
+  | id=ID                         {((fun t -> t), id)   }
+  | TIMES vd=vardesc %prec DEREF  {compose (fun t->TypP(t)) vd}
+  | LPAREN vd=vardesc RPAREN      {vd}
+  | vd=vardesc LBRACK i=option(LINT) RBRACK 
+                                  {compose (fun t -> TypA(t, i)) vd}
 ;
 
 vardecl:
-  | tp=typ vd=vardesc { ((fst vd) tp, snd vd))} 
+  | tp=typ vd=vardesc { ((fst vd) tp, snd vd)}  (* (typ,id) *)
 ;
 
 
@@ -100,19 +101,19 @@ fundecl:
 
 stmtordec:
   | st=stmt {Stmt(st) |@| $loc}
-  | vd=vardecl {vd |@| $loc}
+  | vd=vardecl {Dec(fst vd, snd vd) |@| $loc}
 ;
 
 block:
-  | LBRACE lst=separated_list(SEMICOLON, stmtordec) RBRACE {}
+  | LBRACE lst=separated_list(SEMICOLON, stmtordec) RBRACE {Block(lst) |@| $loc}
 ;
 
 block_stmt:
-  | e=expr SEMICOLON                    {Expr(e) |@| $loc}
-  | RETURN e=option(expr) SEMICOLON     {Return(e) |@| $loc}
-  | b=block  {Block(b) |@| $loc}
+  | e=expr                      {Expr(e) |@| $loc}
+  | RETURN e=option(expr)       {Return(e) |@| $loc}
+  | b=block                     {b}
   | IF LPAREN cond=expr RPAREN st1=block_stmt  
-                                      {If(cond, st1, Block([])|@| $loc) |@| $loc}
+                                {If(cond, st1, Block([])|@| $loc) |@| $loc}
 ;
 
 
@@ -128,56 +129,65 @@ stmt:
                                         {Block([
                                           Stmt(Expr(e1)|@| $loc) |@| $loc;
                                           Stmt( 
-                                            While(e2, Block(
-                                              [(Stmt(st)|@| $loc); 
-                                                Stmt(Expr(e3)|@| $loc)|@| $loc])|@| $loc
+                                            While(e2, 
+                                                  Block(
+                                                    [(Stmt(st)|@| $loc); 
+                                                    Stmt(Expr(e3)|@| $loc)|@| $loc])|@| $loc
                                               (*Block(body@[Stmt(Expr(e3)|@| $loc) |@| $loc]) |@| $loc*)
                                             ) |@| $loc
                                           )|@| $loc
                                         ]) |@| $loc}
-  | st=block_stmt                   {st}
+  | st=block_stmt                       {st}
 ;
 
 
 
 expr:
   |re=rexpr {re}
-  |le=lexpr {le}
+  |le=lexpr {Access(le) |@| $loc}
 ;
 
 lexpr:
-  | id=ID {AccVar(id) |@| $loc}
-  | LPAREN lexpr RPAREN {}
-  | TIMES lexpr {AccDeref(e) |@| $loc}
-  | TIMES aexpr {AccDeref(e) |@| $loc}
-  | lexpr LBRACK expr RBRACK {AccIndex(a, e1) |@| $loc}
+  | id=ID                         {AccVar(id) |@| $loc}
+  | LPAREN le=lexpr RPAREN        {le}
+  | TIMES le=lexpr                {AccDeref(Access(le)|@| $loc) |@| $loc}
+  | TIMES ae=aexpr                {AccDeref(ae) |@| $loc}
+  | le=lexpr LBRACK e=expr RBRACK {AccIndex(le, e) |@| $loc}
 ;
 
 rexpr:
-  | ae=aexpr {ae}
-  | le=lexpr ASSIGN e=expr {Assign(a, e) |@| $loc}
-  | NOT expr {UnaryOp(not, e)}
-  | MINUS e=expr %prec UMINUS {UnaryOp(Neg, e)}
-  | e1=expr bop=binaryop e2=expr {BinaryOp(bop, e1, e2)}
+  | ae=aexpr                      {ae}
+  | le=lexpr ASSIGN e=expr        {Assign(le, e) |@| $loc}
+  | NOT e=expr                    {UnaryOp(Not, e)|@| $loc}
+  | MINUS e=expr %prec UMINUS     {UnaryOp(Neg, e)|@| $loc}
+  | e1 = expr PLUS e2 = expr
+    { BinaryOp(Add, e1, e2) |@| $loc }
+  | e1 = expr MINUS e2 = expr
+    { BinaryOp(Sub, e1, e2) |@| $loc }
+  | e1 = expr TIMES e2 = expr
+    { BinaryOp(Mult, e1, e2) |@| $loc }
+  | e1 = expr DIV e2 = expr
+    { BinaryOp(Div, e1, e2) |@| $loc }
+  | e1 = expr MOD e2 = expr
+    { BinaryOp(Mod, e1, e2) |@| $loc }
+  | e1 = expr LESS e2 = expr
+    { BinaryOp(Less, e1, e2) |@| $loc }
+  | e1 = expr GREATER e2 = expr
+    { BinaryOp(Greater, e1, e2) |@| $loc }
+  | e1 = expr LEQ e2 = expr
+    { BinaryOp(Leq, e1, e2) |@| $loc }
+  | e1 = expr GEQ e2 = expr
+    { BinaryOp(Geq, e1, e2) |@| $loc }
+  | e1 = expr EQ e2 = expr
+    { BinaryOp(Equal, e1, e2) |@| $loc }
+  | e1 = expr NEQ e2 = expr
+    { BinaryOp(Equal, e1, e2) |@| $loc }
+  | e1 = expr L_OR e2 = expr
+    { BinaryOp(Or, e1, e2) |@| $loc }
+  | e1 = expr L_AND e2 = expr
+    { BinaryOp(And, e1, e2) |@| $loc }
   | id=ID LPAREN l=separated_list(COMMA, expr) RPAREN
-    {Call(id, l) |@| $loc}
-;
-
-binaryop:
-  | PLUS        {Add}
-  | MINUS       {Sub}
-  | TIMES       {Mult}
-  | DIV         {Div}
-  | MOD         {Mod}
-  | LESS        {Less}
-  | GREATER     {Greater}
-  | LEQ         {Leq}
-  | GEQ         {Geq}
-  | EQ          {Eq}
-  | NEQ         {Neq}
-  | L_OR        {Or}
-  | L_AND       {And}
-
+                                  {Call(id, l) |@| $loc}
 ;
 
 aexpr:
@@ -185,10 +195,13 @@ aexpr:
   | c=LCHAR                             {CLiteral(c) |@| $loc}
   | TRUE                                {BLiteral(true) |@| $loc}
   | FALSE                               {BLiteral(false) |@| $loc}
-  | NULL                                {}
+  | NULL                                {Access(AccVar("NULL")|@| $loc)|@| $loc}
   | LPAREN re=rexpr RPAREN              {re}
-  | AND lexpr                           {Addr(a) |@| $loc}    
+  | AND le=lexpr                        {Addr(le) |@| $loc}    
 ;
+
+
+
 
 
 
