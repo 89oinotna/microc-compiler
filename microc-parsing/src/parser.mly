@@ -72,15 +72,16 @@ program:
 topdecl:
   | fd=fundecl              {Fundecl(fd) |@| $loc}
   | vd=vardecl SEMICOLON    {Vardec(fst vd, snd vd) |@| $loc}
+  | vd=vardecinit SEMICOLON {Vardecinit(fst vd, fst (snd vd), snd (snd vd)) |@| $loc}
 ;
 
-typ:
-  | INT   {TypI}
-  | CHAR  {TypC}
-  | BOOL  {TypB}
-  | VOID  {TypV}
+vardecinit:
+ | vd=vardecl ASSIGN e=rexpr {(fst vd, (snd vd, e))}
 ;
 
+vardecl:
+  | tp=typ vd=vardesc { ((fst vd) tp, snd vd)}  (* (typ,id) *)
+;
 
 vardesc: (* functions in the couple to reconstruct the type*)
   | id=ID                         {((fun t -> t), id)   }
@@ -90,11 +91,6 @@ vardesc: (* functions in the couple to reconstruct the type*)
                                   {compose (fun t -> TypA(t, i)) vd}
 ;
 
-vardecl:
-  | tp=typ vd=vardesc { ((fst vd) tp, snd vd)}  (* (typ,id) *)
-;
-
-
 fundecl:
   | tp=typ id=ID LPAREN fd=separated_list(COMMA, vardecl) RPAREN b=block
                                       {{typ=tp; fname=id; formals=fd; body=b}}
@@ -103,6 +99,7 @@ fundecl:
 stmtordec:
   | st=stmt {Stmt(st) |@| $loc}
   | vd=vardecl SEMICOLON {Dec(fst vd, snd vd) |@| $loc}
+  | vd=vardecinit SEMICOLON {Decinit(fst vd, fst (snd vd), snd (snd vd)) |@| $loc}
 ;
 
 block:
@@ -142,12 +139,12 @@ stmt:
 
 
 expr:
-  |re=rexpr {re}
+  |re=rexpr  {re}
   |le=lexpr {Access(le) |@| $loc}
 ;
 
 lexpr:
-  | id=ID                         {AccVar(id) |@| $loc}
+  | id=ID                   {AccVar(id) |@| $loc}
   | LPAREN le=lexpr RPAREN        {le}
   | TIMES le=lexpr                {AccDeref(Access(le)|@| $loc) |@| $loc}
   | TIMES ae=aexpr                {AccDeref(ae) |@| $loc}
@@ -204,6 +201,14 @@ aexpr:
   | NULL                        {Access(AccVar("NULL")|@| $loc)|@| $loc}
   | LPAREN re=rexpr RPAREN      {re}
   | AND le=lexpr                {Addr(le) |@| $loc}    
+;
+
+
+typ:
+  | INT   {TypI}
+  | CHAR  {TypC}
+  | BOOL  {TypB}
+  | VOID  {TypV}
 ;
 
 opassign:
