@@ -21,7 +21,8 @@
         ("NULL", NULL);
         ("bool", BOOL);
         ("true", TRUE);
-        ("false", FALSE)
+        ("false", FALSE);
+        ("do", DO)
     ]
 
     let read_char c=if c.[0]=='\\' then 
@@ -71,6 +72,11 @@ rule token = parse
   | '/'                    { DIV }
   | '%'                    { MOD }    
   | '='                    { ASSIGN }
+  | "+="                   { ADDASS }
+  | "-="                   { SUBASS }
+  | "/="                   { DIVASS }
+  | "%="                   { MODASS }
+  | "*="                   { MULTASS }
   | "=="                   { EQ } 
   | "!="                   { NEQ } 
   | '<'                    { LESS }

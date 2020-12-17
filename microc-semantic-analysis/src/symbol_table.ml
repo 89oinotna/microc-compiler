@@ -1,56 +1,49 @@
+open Sast
+
 exception DuplicateEntry
 
 exception Scope_error of string
 
+type 'a entry_table={typp:'a; annotation: string option}[@@deriving show]
 
-type 'a t = int (* TODO: this is a dummy definition *)
+
+type 'a t = (string, 'a entry_table) Hashtbl.t (* TODO: this is a dummy definition *)
 
 
 let create_hashtable size init =
   let tbl = Hashtbl.create size in
-  List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
-  tbl
+  begin 
+    List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
+    tbl
+  end
 
-let base_table=create_hashtable 8 [
-  (Add, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Sub, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Mult, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Div, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Mod, {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation: None});
-  (Less, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
-  (Greater, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation:None});
-  (Leq, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
-  (Geq, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});
-  (Or, {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation: None});
-  (And, {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation: None});
-  (Neg, {typp=Tfun(Tint, Tint)); annotation: None});
-  (Not, {typp=Tfun(Tbool, Tbool); annotation: None});
-]
-(*
-  (Equal, {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation: None});*)
-
-let scope_list=[base_table]
-
+(* used to store all key -> entry *)
 let empty_table =  Hashtbl.create 1
 
+let scope_list=ref [|empty_table|]
+
 let begin_block table = 
-  let initialize tb=
-          tb::scope_list; 
-          tb (* return table of new block *)
-in initialize empty_table
+  let initialize tb = scope_list:=Array.append !scope_list [|tb|]; tb  
+in initialize (Hashtbl.create 1) (* return table of new block *)
+
 
 let end_block table =
-  let f key data=Hashtbl.remove base_table key
-in
-  Hashtbl.iter f table
-  match scope_list with
-| x::xs -> if tb=x then scope_list=tail else raise Scope_error
-| _ -> raise Scope_error
+  let f key data=Hashtbl.remove empty_table key
+    in
+  Hashtbl.iter f table;
+  let len=Array.length !scope_list
+  in
+    if table=(!scope_list.(len-1)) then 
+      begin
+        scope_list:=(Array.sub !scope_list 0 (len-2)); 
+        (!scope_list.(len-2))
+      end
+    else raise (Scope_error("block"))
 
 let add_entry symbol info table = Hashtbl.add table symbol info;
-Hashtbl.add base_table symbol info
+Hashtbl.add empty_table symbol info
 
-let lookup symbol table = Hashtbl.find symbol base_table
+let lookup symbol table = Hashtbl.find symbol empty_table
 
 (*let rec lookup symbol table = Hashtbl.find symbol base_table*)
 

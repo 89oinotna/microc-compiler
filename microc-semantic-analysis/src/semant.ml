@@ -1,40 +1,16 @@
 open Ast
+open Sast
 open Symbol_table
 
 exception Type_error of string
 
-(*let create_hashtable size init =
+let create_hashtable size init =
   let tbl = Hashtbl.create size in
-  List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
-  tbl
+  begin 
+    List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
+    tbl
+  end
 
-
-let base_table=create_hashtable 8 [
-  (Add, Tfun(Tint, Tfun(Tint, Tint)) );
-  (Sub, Tfun(Tint, Tfun(Tint, Tint)) );
-  (Mult,Tfun(Tint, Tfun(Tint, Tint)) );
-  (Div, Tfun(Tint, Tfun(Tint, Tint)) );
-  (Mod, Tfun(Tint, Tfun(Tint, Tint)) );
-  (Less,Tfun(Tbool, Tfun(Tint, Tint)) );
-  (Greater, Tfun(Tbool, Tfun(Tint, Tint)));
-  (Leq, Tfun(Tbool, Tfun(Tint, Tint)));
-  (Geq, Tfun(Tbool, Tfun(Tint, Tint)));
-  (Or, Tfun(Tbool, Tfun(Tbool, Tbool)));
-  (And, Tfun(Tbool, Tfun(Tbool, Tbool)));
-  (Not, Tfun(Tbool, Tbool));
-  (Neg, Tfun(Tint, Tint)))
-]*)
-type 'a entry_table={typp:'a; annotation: string option}[@@deriving show]
-
-type ttype =
-  | Tint
-  | Tbool
-  | Tchar
-  | Tvoid
-  | Tarr of ttype * ttype
-  | Tptr of ttype
-  | Tfun of ttype * ttype
-  | Treturn of ttype
 
 let unpack ann_node=
   match ann_node with
@@ -213,70 +189,21 @@ let rec type_of_topdecl gamma e=
     Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;;
 
 
-
-
-
-
-
-
-
-
-(*
-      | Let(x, e1, e2) ->
-        let t1 = type_of gamma e1 in
-        type_of ((x,t1)::gamma) e2
-      | If(e1, e2, e3) ->
-        if (type_of gamma e1) = Tbool then
-          let t2 = type_of gamma e2 in
-          let t3 = type_of gamma e3 in
-          if t2 = t3 then t2 else raise (Type_error "if branches have different types")
-        else
-          raise (Type_error "if with no a boolean guard")
-      (* | Fun(x,tx, e) -> Tfun(tx, type_of ((x, tx) :: gamma) e) *)
-      | Letfun(f, x, (Tfun(t1,t2) as t), body, e) ->
-        let gamma' = (f, t) :: (x, t1) :: gamma in
-        if (type_of gamma' body) = t2 then
-          type_of ((f, t) :: gamma) e
-        else
-         raise (Type_error "Return type does not match")
-      | Prim("=", e1, e2) ->
-        let t1 = type_of gamma e1 in
-        let t2 = type_of gamma e2 in
-        begin
-          match t1, t2 with
-          | Tint, Tint
-          | Tbool, Tbool -> Tbool
-          | Tfun(_,_), Tfun(_,_) ->
-            raise (Type_error "Error comparing functional values for equality")
-          | _, _ -> raise (Type_error "error in the arguments of =")
-        end
-      | Prim(op, e1, e2) ->
-        let t1 = type_of gamma e1 in
-        let t2 = type_of gamma e2 in
-        let top = lookup gamma op in
-        begin
-          match top with
-          | Tfun(t1', Tfun(t2', tr')) ->
-            if (t1' = t1 && t2' = t2) then
-              tr'
-            else
-              raise (Type_error ("error in the arguments of " ^ op))
-          | _ -> failwith "Inconsistent state"
-        end
-      | Call(e1, e2) ->
-        let t1 = type_of gamma e1 in
-        let t2 = type_of gamma e2 in
-        begin
-          match t1 with
-          | Tfun(tx, tr) ->
-            if tx = t2 then
-              tr
-            else
-              raise (Type_error "fuctional application: argument type mismatch")
-          | _ -> raise (Type_error "application to a non functional value")
-        end
-      | _ -> assert false    (* this should be not reachable *)*)
-
+let base_table=create_hashtable 8 [
+  ("+", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("-", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("*", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("/", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("%", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("<", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
+  (">", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation=None});
+  ("<=", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
+  (">=", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
+  ("||", {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
+  ("&&", {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
+  ("!", {typp=Tfun(Tbool, Tbool); annotation= None});
+]
+    
 
 let check (Prog(topdecls)) = 
   let rec scan lst table=

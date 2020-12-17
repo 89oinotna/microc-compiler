@@ -1,5 +1,7 @@
 exception DuplicateEntry
 
+type 'a entry_table 
+
 type 'a t
 
 val empty_table : 'a t

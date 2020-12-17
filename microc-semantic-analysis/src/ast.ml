@@ -4,7 +4,9 @@ type binop = Add | Sub | Mult | Div  | Mod | Equal | Neq | Less | Leq |
 
 (*type assign_op = Assign_plus | Assign_minus | Assign_mul | Assign_div | Assign_mod [@@deriving show] *)
 
-type uop = Neg | Not | Inc | Dec [@@deriving show]
+type uop = Neg | Not | PreInc | PreDec | PostInc | PostDec [@@deriving show]
+
+type opa= Add | Sub | Div | Mult | Mod [@@deriving show]
 
 type identifier = string [@@deriving show]
 
@@ -25,6 +27,7 @@ type typ =
 and expr =  expr_node annotated_node                                                   
 and expr_node =     
   | Access of access                 (* x    or  *p    or  a[e]     *) 
+  | OpAssign of opa * access * expr  (* x+=e x-=e ...               *)
   | Assign of access * expr          (* x=e  or  *p=e  or  a[e]=e   *)
   | Addr of access                   (* &x   or  &*p   or  &a[e]    *)
   | ILiteral of int                  (* Integer literal             *)
@@ -55,6 +58,7 @@ and stmt_node =
 and stmtordec = stmtordec_node annotated_node
 and stmtordec_node =                                                    
   | Dec of typ * identifier          (* Local variable declaration  *)
+  | Decinit of typ * identifier * expr
   | Stmt of stmt                     (* A statement                 *)
   [@@deriving show]
 
@@ -69,6 +73,7 @@ type topdecl = topdecl_node annotated_node
 and topdecl_node = 
   | Fundecl of fun_decl
   | Vardec of typ * identifier
+  | Vardecinit of typ * identifier * expr
   [@@deriving show]
 
 type program = Prog of topdecl list [@@deriving show]
