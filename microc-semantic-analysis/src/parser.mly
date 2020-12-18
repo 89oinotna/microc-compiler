@@ -24,6 +24,9 @@
 
   let compose f (g, s)=((fun x -> g(f(x))), s) (* using to compose with functions *)
   
+  let funcblock b=
+    match b with
+    |{node;loc;id}->{node;loc;1} 
 %}
 
 /* Tokens declarations TODO Remember to add null*/
@@ -93,7 +96,7 @@ vardesc: (* functions in the couple to reconstruct the type*)
 
 fundecl:
   | tp=typ id=ID LPAREN fd=separated_list(COMMA, vardecl) RPAREN b=block
-                                      {{typ=tp; fname=id; formals=fd; body=b}}
+                                      {{typ=tp; fname=id; formals=fd; body=(funcblock b)}}
 ;
 
 stmtordec:
