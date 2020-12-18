@@ -2,7 +2,6 @@ open Ast
 open Sast
 open Symbol_table
 
-exception Type_error of string
 
 let unpack ann_node=
   match ann_node with
@@ -23,66 +22,103 @@ let rec type_of_typ gamma e=
   | TypB -> Tbool
   | TypC -> Tchar
   | TypV -> Tvoid
-
   
-  let rec type_of_expr gamma e=
-    let rec type_of_access gamma e=
-      match unpack e with
-      | AccVar(id) -> Symbol_table.lookup id gamma
-      | AccDeref(e) -> type_of_expr gamma e
-      | AccIndex(a, e) -> 
-        let a_typ=type_of_access gamma a in
-        match a_typ with
-        | Tarr(_, _) -> 
-          if (type_of_expr gamma e) = Tint then
-            a_typ
-          else raise (Type_error "index is not an int")
-        | _ -> raise (Type_error "error with the array access")
-    in
+let binop_to_string op=
+    match op with
+    | Add -> "+"
+    | Sub ->"-"
+    | Mult ->"*"
+    | Div  ->"/"
+    | Mod ->"%"
+    | Equal ->"=="
+    | Neq ->"!="
+    | Less ->
+    | Leq ->
+    | Greater -> 
+    | Geq ->
+    | And ->
+    | Or ->            
+  
+let rec type_of_expr gamma e=
+  let rec type_of_access gamma e=
     match unpack e with
-    | ILiteral(_) -> Tint
-    | BLiteral(_) -> Tbool
-    | CLiteral(_) -> Tchar
-    | Access(a)  -> type_of_access gamma a
-    | Assign(a, e) -> let a_typ=type_of_access gamma a in
-                      if (a_typ)=(type_of_expr gamma e) then 
-                        a_typ
-                      else raise (Type_error "type error on assignment")
-    | Addr(a) -> type_of_access gamma a
-    | UnaryOp(uop, e) -> 
-      let e_typ=type_of_expr gamma e in
-      let op_typ=Symbol_table.lookup (show_uop uop) gamma in 
+    | AccVar(id) -> try 
+                      Symbol_table.lookup id gamma
+                    with
+                    |_ -> (Util.raise_semantic_error e.loc "Variable not in scope")
+    | AccDeref(ex) -> 
+      let tp=type_of_expr gamma ex 
+      in
+      match tp with
+      | Tptr(typ) -> typ
+      | _ -> (Util.raise_semantic_error e.loc "Dereferencing a non pointer")
+    | AccIndex(a, ex) -> 
+      let a_typ=type_of_access gamma a in
+      match a_typ with
+      | Tarr(a_typ, _) -> 
+        if (type_of_expr gamma ex) = Tint then
+          a_typ
+        else raise (Util.raise_semantic_error e.loc "Index is not an int")
+      | _ -> raise (Util.raise_semantic_error e.loc "Not an array")
+  in
+  match unpack e with
+  | Access(a)  -> type_of_access gamma a
+  | OpAssign(_, a, ex) -> 
+    let a_typ=type_of_access gamma a in
+    let e_typ=type_of_expr gamma ex in
+    if a_typ=e_typ then
+      match a_typ, e_typ with
+      | Tint, _  
+      | Tbool, _ 
+      | Tchar, _  
+      | Tptr(_), _ -> a_typ
+      | tp, _ -> (Util.raise_semantic_error e.loc "Cannot assign a type "^(show tp))
+    else
+      (Util.raise_semantic_error e.loc "Lvalue must be the same type of rvalue")   
+  | Assign(a, e) -> 
+    let a_typ=type_of_access gamma a in
+        if (a_typ)=(type_of_expr gamma e) then 
+          a_typ
+        else raise (Type_error "type error on assignment")
+  | Addr(a) -> type_of_access gamma a
+  | ILiteral(_) -> Tint
+  | BLiteral(_) -> Tbool
+  | CLiteral(_) -> Tchar
+  
+  | UnaryOp(uop, e) -> 
+    let e_typ=type_of_expr gamma e in
+    let op_typ=Symbol_table.lookup (show_uop uop) gamma in 
+    begin
+      match op_typ with
+      | Tfun(tp1, tp2) -> if tp1=e_typ then tp2 else raise (Type_error ("Wrong type for" ^ (show_uop uop)))
+      | _ -> failwith "Inconsistent state"
+    end
+  | BinaryOp(Equal, e1, e2) -> 
+      let typ1=type_of_expr gamma e1 in
+      if typ1=(type_of_expr gamma e2) then Tbool
+      else raise (Type_error ("Wrong type for" ^ (show_binop Equal)))
+  | BinaryOp(binop, e1, e2) ->
+      let e1_tp=type_of_expr gamma e1 in
+      let e2_tp=type_of_expr gamma e2 in
+      let op_typ=Symbol_table.lookup (show_binop binop) gamma in 
       begin
-        match op_typ with
-        | Tfun(tp1, tp2) -> if tp1=e_typ then tp2 else raise (Type_error ("Wrong type for" ^ (show_uop uop)))
+      match op_typ with
+        | Tfun(tp1, Tfun(tp2, tres)) ->
+          if (tp1=e1_tp && tp2=e2_tp) then tres else raise (Type_error ("error in the arguments of " ^ (show_binop binop)))
         | _ -> failwith "Inconsistent state"
       end
-    | BinaryOp(Equal, e1, e2) -> 
-        let typ1=type_of_expr gamma e1 in
-        if typ1=(type_of_expr gamma e2) then Tbool
-        else raise (Type_error ("Wrong type for" ^ (show_binop Equal)))
-    | BinaryOp(binop, e1, e2) ->
-        let e1_tp=type_of_expr gamma e1 in
-        let e2_tp=type_of_expr gamma e2 in
-        let op_typ=Symbol_table.lookup (show_binop binop) gamma in 
-        begin
-        match op_typ with
-          | Tfun(tp1, Tfun(tp2, tres)) ->
-            if (tp1=e1_tp && tp2=e2_tp) then tres else raise (Type_error ("error in the arguments of " ^ (show_binop binop)))
-          | _ -> failwith "Inconsistent state"
-        end
-    | Call(id, expr_lst) -> 
-        let fun_typ=Symbol_table.lookup id gamma in 
-          let rec check_args f_tp args=
-            match f_tp, args with
-            | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
+  | Call(id, expr_lst) -> 
+      let fun_typ=Symbol_table.lookup id gamma in 
+        let rec check_args f_tp args=
+          match f_tp, args with
+          | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
+                                  else raise (Type_error ("error in the arguments of " ^ id))
+          | Tfun(tp, tp'), x::[] -> if tp=(type_of_expr gamma x) then tp' 
                                     else raise (Type_error ("error in the arguments of " ^ id))
-            | Tfun(tp, tp'), x::[] -> if tp=(type_of_expr gamma x) then tp' 
-                                      else raise (Type_error ("error in the arguments of " ^ id))
-            | Tfun(tp, tp'), x::xs -> if tp=(type_of_expr gamma x) then check_args tp' xs 
-                                      else raise (Type_error ("error in the arguments of " ^ id))
-            | _ -> raise (Type_error ("error in function " ^ id))
-          in check_args fun_typ expr_lst
+          | Tfun(tp, tp'), x::xs -> if tp=(type_of_expr gamma x) then check_args tp' xs 
+                                    else raise (Type_error ("error in the arguments of " ^ id))
+          | _ -> raise (Type_error ("error in function " ^ id))
+        in check_args fun_typ expr_lst
 
 let rec type_of_stmt gamma e=
   let rec type_of_stmtordec gamma e=
@@ -129,37 +165,43 @@ let rec type_of_stmt gamma e=
     begin
       match e with
       | None -> Treturn(Tvoid)
-      | Some(x) -> Treturn(type_of_typ gamma e)
+      | Some(x) -> let tp=type_of_typ gamma e in 
+                    match tp with
+                    | Tvoid 
+                    | Tint
+                    | Tchar
+                    | Tbool-> Treturn(tp) 
+                    | _ -> raise (Type_error("Wrong return type"))
     end
   | Block(lst) -> 
         (* if in function the scope is gamma and we need to check return type*)
-         if e.id=1 then 
-           let return_type_ht = 
-             let ht=Hashtbl.create 1 in
-               let f stmtordec=
-                 match (type_of_stmtordec gamma stmtordec) with
-                   | Treturn(tp) -> Hashtbl.add ht tp tp
-                   | _ -> ()
-                 in
-               List.iter f lst; 
-               ht
-           in
-           if Hashtbl.length return_type_ht > 1 then 
-             raise (Type_error "Wrong return type")
-           else 
-             begin
-               let block_tp=
-                 let fol key value lst= key::lst
-                 in 
-                 Hashtbl.fold fol return_type_ht []
-               in
-               match block_tp with
-                 | [] -> Tvoid
-                 | x::[] -> x
-                 | _ -> assert false
-             end
-         else 
-           "ciao"
+      let scope= if e.id=1 then gamma else Symbol_table.begin_block gamma in
+        (* need to check all return type in the block *)
+      let return_type_ht = 
+        let ht=Hashtbl.create 0 in
+          let f stmtordec=
+            match (type_of_stmtordec scope stmtordec) with
+              | Treturn(tp) -> Hashtbl.add ht tp tp
+              | _ -> ()
+            in
+          List.iter f lst; 
+          ht
+      in
+      if Hashtbl.length return_type_ht > 1 then 
+        raise (Type_error "Wrong return type")
+      else 
+        begin
+          let block_tp=
+            let fol key value lst= key::lst
+            in 
+            Hashtbl.fold fol return_type_ht []
+          in
+          match block_tp with
+            | [] -> Tvoid
+            | x::[] -> x
+            | _ -> assert false
+        end
+     
   
 
 let rec type_of_topdecl gamma e=
