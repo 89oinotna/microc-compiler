@@ -26,10 +26,12 @@ let empty_table =  create_hashtable 8 [
   ("*", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
   ("/", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
   ("%", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("<", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
-  (">", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation=None});
-  ("<=", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
-  (">=", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
+  ("==", {typp=Tfun('a, Tfun('a, Tbool)); annotation= None});
+  ("!=", {typp=Tfun('a, Tfun('a, Tbool)); annotation= None});
+  ("<", {typp=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
+  (">", {typp=Tfun(Tint, Tfun(Tint, Tbool)); annotation=None});
+  ("<=", {typp=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
+  (">=", {typp=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
   ("||", {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
   ("&&", {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
   ("!", {typp=Tfun(Tbool, Tbool); annotation= None});
