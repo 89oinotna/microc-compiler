@@ -4,20 +4,12 @@ open Symbol_table
 
 exception Type_error of string
 
-let create_hashtable size init =
-  let tbl = Hashtbl.create size in
-  begin 
-    List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
-    tbl
-  end
-
-
 let unpack ann_node=
   match ann_node with
-  | { node; loc; id} -> node
+  | { loc; node; id} -> node
   | _  -> raise (Type_error "error in ast node")
 
-let rec type_of_typ (gamma: 'a t) e=
+let rec type_of_typ gamma e=
   match e with
   | TypA(tp, i) ->  let i_typ=
                       match i with
@@ -33,7 +25,7 @@ let rec type_of_typ (gamma: 'a t) e=
   | TypV -> Tvoid
 
   
-  let rec type_of_expr (gamma: 'a t) e=
+  let rec type_of_expr gamma e=
     let rec type_of_access gamma e=
       match unpack e with
       | AccVar(id) -> Symbol_table.lookup id gamma
@@ -96,87 +88,111 @@ let rec type_of_stmt gamma e=
   let rec type_of_stmtordec gamma e=
     match unpack e with
     | Dec(typ, id) -> 
-                      let tp=type_of_typ gamma typ in
-                      begin
-                      Symbol_table.add_entry id ({typp=tp; annotation= None}) gamma; 
-                      tp
-                      end
+        let tp=type_of_typ gamma typ in
+        begin
+          Symbol_table.add_entry id ({typp=tp; annotation=None}) gamma; 
+          tp
+        end
+    | Decinit(typ, id, expr) ->
+      let tp=type_of_typ gamma typ in
+      let e_tp=type_of_expr gamma expr in
+      if tp=e_tp then
+        Symbol_table.add_entry id {ttype=tp; annotation=None} gamma
+      else
+        raise (Type_error "Wrong type on variable declaration "^id)
     | Stmt(st) -> type_of_stmt gamma st
-    in
+  in
   match unpack e with
   | If(e1, e2, e3) ->
       if (type_of_expr gamma e1) = Tbool then
         let t2=type_of_stmt gamma e2 in
         let t3 = type_of_stmt gamma e3 in
-        t3
-      else
-      raise (Type_error "if with no a boolean guard")
-      | Block(lst) -> 
-      let return_type_ht = 
-        let ht=Hashtbl.create 1 in
-        let scope=Symbol_table.begin_block gamma in
-          let f stmtordec=
-            match (type_of scope stmtordec) with
-              | Treturn(tp) -> Hashtbl.add ht tp tp
-              | _ -> ()
-            in
-        List.iter f lst; ht
-      in
-      if Hashtbl.length return_type_ht > 1 then raise (Type_error "too many return type")
-      else 
-      begin
-        let block_tp=
-          let fol key value lst= key::lst
-          in 
-          Hashtbl.fold fol return_type_ht []
-        in
-        match block_tp with
-          | [] -> Tvoid
-          | x::[] -> x
-          | _ -> assert false
-      end
-
+        if t2=Treturn then
+            if t3=Treturn then
+              if t2=t3 then t3
+              else raise Type_error("Different return type")
+            else t2
+        else t3
+      else raise (Type_error "if with no boolean guard")
   | While(e, stmt) -> 
-      if (type_of gamma e) = Tbool then
-        type_of gamma stmt
+      if (type_of_typ gamma e) = Tbool then
+        type_of_stmt gamma stmt
       else
-        raise (Type_error "while with no a boolean guard")
-  | Expr(e) -> type_of gamma e
+        raise (Type_error "while with no boolean guard")
+  | DoWhile(stmt, e) -> 
+    if (type_of_typ gamma e) = Tbool then
+      type_of_stmt gamma stmt
+    else
+      raise (Type_error "while with no boolean guard")
+  | Expr(e) -> type_of_expr gamma e
   | Return(e) -> 
+    begin
       match e with
       | None -> Treturn(Tvoid)
-      | Some(x) -> Treturn(type_of e gamma)
+      | Some(x) -> Treturn(type_of_typ gamma e)
+    end
+  | Block(lst) -> 
+        (* if in function the scope is gamma and we need to check return type*)
+         if e.id=1 then 
+           let return_type_ht = 
+             let ht=Hashtbl.create 1 in
+               let f stmtordec=
+                 match (type_of_stmtordec gamma stmtordec) with
+                   | Treturn(tp) -> Hashtbl.add ht tp tp
+                   | _ -> ()
+                 in
+               List.iter f lst; 
+               ht
+           in
+           if Hashtbl.length return_type_ht > 1 then 
+             raise (Type_error "Wrong return type")
+           else 
+             begin
+               let block_tp=
+                 let fol key value lst= key::lst
+                 in 
+                 Hashtbl.fold fol return_type_ht []
+               in
+               match block_tp with
+                 | [] -> Tvoid
+                 | x::[] -> x
+                 | _ -> assert false
+             end
+         else 
+           "ciao"
   
 
 let rec type_of_topdecl gamma e=
-  match unpack e with
+  match e with
   | Fundecl({typ; fname; formals; body}) ->
+    (*args are in function's scope*)
     let scope=Symbol_table.begin_block gamma in
-    (*args in scope*)
+    (* put args in the scope and type check them*)
     let formals_tp=
         let f formal=
           match formal with
-          (*TODO cambiare fun type*)
           | (tp, id) -> 
             let tp1=(type_of_typ gamma tp)
             in
             begin
-              Symbol_table.add_entry id (tp1, None) scope; 
+              Symbol_table.add_entry id {typp=tp1; annotation=None} scope; 
               tp1
             end
           | _ -> raise (Type_error ("error in function args definition"^fname))
         in 
         List.map f formals
     in      
+    (* fun type *)
+    let ftyp=type_of_typ gamma typ in
     (*body*)
-    let btyp=type_of scope body in  
-    if (type_of_typ gamma typ) = btyp then(*end block*) 
-      let fun_tp=
+    let btyp=type_of_stmt scope body in  
+    if ftyp = btyp then(*end block*) 
+      let fun_tp= (* build fun type and insert it in the scope *)
         let rec build_tp ls =
           match ls with
           | [] -> Tfun(Tvoid, btyp)
           | x::[] -> Tfun(x, btyp)
-          | x::xs -> Tfun(x, get_formals_tp xs)
+          | x::xs -> Tfun(x, build_tp xs)
         in
         build_tp formals_tp
       in 
@@ -184,31 +200,26 @@ let rec type_of_topdecl gamma e=
         Symbol_table.add_entry fname {ttype=fun_tp; annotation=None} gamma;
         fun_tp
       end 
-    else raise (Type_error "wrong function type")
-  | Vardec(typ, id) -> let tp=type_of_typ gamma typ in
-    Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;;
+    else raise (Type_error "Return type doesn't match function type "^fname)
+  | Vardec(typ, id) -> 
+    let tp=type_of_typ gamma typ in
+    Symbol_table.add_entry id {ttype=tp; annotation=None} gamma
+  | Vardecinit(typ, id, expr) ->
+    let tp=type_of_typ gamma typ in
+    let e_tp=type_of_expr gamma expr in
+    if tp=e_tp then
+      Symbol_table.add_entry id {ttype=tp; annotation=None} gamma
+    else
+      raise (Type_error "Wrong type on variable declaration "^id)
 
 
-let base_table=create_hashtable 8 [
-  ("+", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("-", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("*", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("/", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("%", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("<", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
-  (">", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation=None});
-  ("<=", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
-  (">=", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
-  ("||", {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
-  ("&&", {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
-  ("!", {typp=Tfun(Tbool, Tbool); annotation= None});
-]
+
     
-
+(* add return type of the main *)
 let check (Prog(topdecls)) = 
   let rec scan lst table=
     match lst with
-    | {node;  loc ; id} ::xs -> type_of_topdecl node; scan xs;
+    | {node;  loc ; id} ::xs -> type_of_topdecl node; scan xs table;
     | [] -> Tvoid
     in
  scan topdecls Symbol_table.begin_block(Symbol_table.empty_table)

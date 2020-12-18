@@ -17,8 +17,23 @@ let create_hashtable size init =
     tbl
   end
 
-(* used to store all key -> entry *)
-let empty_table =  Hashtbl.create 1
+(* used to store all key -> entry 
+    It has every time all the binding until current scope
+*)
+let empty_table =  create_hashtable 8 [
+  ("+", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("-", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("*", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("/", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("%", {typp=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("<", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
+  (">", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation=None});
+  ("<=", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
+  (">=", {typp=Tfun(Tbool, Tfun(Tint, Tint)); annotation= None});
+  ("||", {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
+  ("&&", {typp=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
+  ("!", {typp=Tfun(Tbool, Tbool); annotation= None});
+]
 
 let scope_list=ref [|empty_table|]
 
@@ -40,8 +55,16 @@ let end_block table =
       end
     else raise (Scope_error("block"))
 
-let add_entry symbol info table = Hashtbl.add table symbol info;
-Hashtbl.add empty_table symbol info
+let add_entry symbol info table = (*check if exists 
+    if it is in the same scope => error
+      otherwise shadows it*)
+  try
+    Hashtbl.find table symbol;
+    raise DuplicateEntry
+  with
+  | Not_found -> Hashtbl.add table symbol info;
+          Hashtbl.add empty_table symbol info
+  
 
 let lookup symbol table = Hashtbl.find symbol empty_table
 
