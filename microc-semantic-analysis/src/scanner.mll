@@ -96,7 +96,8 @@ rule token = parse
   | '('                    { LPAREN }
   | ')'                    { RPAREN }
   | [' ' '\t']             { token lexbuf }
-  | '\n' | '\r'                   { Lexing.new_line lexbuf; token lexbuf }
+  | '\n'                   { Lexing.new_line lexbuf; token lexbuf }
+  | '\r'{token lexbuf }
   | eof                    { EOF }
   | _ as c           { Util.raise_lexer_error lexbuf ("Illegal character " ^ Char.escaped c) }
 
