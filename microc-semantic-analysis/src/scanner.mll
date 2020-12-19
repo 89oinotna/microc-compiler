@@ -106,7 +106,7 @@ and read_comment tp = parse
                               else 
                                 EOF }
   |"*/"                     {if tp=0 then token lexbuf else read_comment tp lexbuf}      
-  | '\n'                    {if tp=0 then read_comment tp lexbuf else token lexbuf}
+  | '\n'                    {Lexing.new_line lexbuf; if tp=0 then read_comment tp lexbuf else token lexbuf}
   | _                       {read_comment tp lexbuf}
 
 
