@@ -22,11 +22,14 @@
 *)
   let (|@|) nd loc = { node = nd; loc = loc ; id=0} 
 
-  let compose f (g, s)=((fun x -> g(f(x))), s) (* using to compose with functions *)
-  
   let funcblock b=
     match b with
-    |{node;loc;id}->{node;loc;1} 
+    |{loc; node; id} -> {loc;node;id=1}
+    |_ -> assert false
+
+  let compose f (g, s)=((fun x -> g(f(x))), s) (* using to compose with functions *)
+  
+  
 %}
 
 /* Tokens declarations TODO Remember to add null*/
