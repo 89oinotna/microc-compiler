@@ -2,11 +2,39 @@ open Ast
 open Sast
 open Symbol_table
 
+type 'a entry_table={
+  ttype:'a; 
+  annotation: string option
+}
+  [@@deriving show]
+
+
+let create_hashtable size init =
+  let tbl = Hashtbl.create size in
+  begin 
+    List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
+    tbl
+  end
 
 let unpack ann_node=
   match ann_node with
   | { loc; node; id} -> node
-  | _  -> raise (Type_error "error in ast node")
+  | _  -> assert false
+
+let binop_to_key op=
+match op with
+| Add -> "+"
+| Sub ->"-"
+| Mult ->"*"
+| Div  ->"/"
+| Mod ->"%"
+| Less -> "<"
+| Leq -> "<="
+| Greater -> ">" 
+| Geq -> ">="
+| And ->"&&"
+| Or ->"||"
+| _ -> assert false        
 
 let rec type_of_typ gamma e=
   match e with
@@ -14,7 +42,7 @@ let rec type_of_typ gamma e=
                       match i with
                       | Some(x:int) -> Tint(*TODO*)
                       | None -> Tvoid (* solo se come arg in funzione *)
-                      | _ -> raise (Type_error "error in function args definition")
+                      | _ -> assert false
                     in
                     Tarr(type_of_typ gamma tp, i_typ)
   | TypP(tp) -> Tptr(type_of_typ gamma tp)
@@ -22,44 +50,33 @@ let rec type_of_typ gamma e=
   | TypB -> Tbool
   | TypC -> Tchar
   | TypV -> Tvoid
-  
-let binop_to_string op=
-    match op with
-    | Add -> "+"
-    | Sub ->"-"
-    | Mult ->"*"
-    | Div  ->"/"
-    | Mod ->"%"
-    | Equal ->"=="
-    | Neq ->"!="
-    | Less ->
-    | Leq ->
-    | Greater -> 
-    | Geq ->
-    | And ->
-    | Or ->            
-  
+
 let rec type_of_expr gamma e=
   let rec type_of_access gamma e=
     match unpack e with
-    | AccVar(id) -> try 
-                      Symbol_table.lookup id gamma
+    | AccVar(id) -> begin
+                    try 
+                      match Symbol_table.lookup id gamma with
+                      | {ttype; annotation} -> ttype
                     with
-                    |_ -> (Util.raise_semantic_error e.loc "Variable not in scope")
+                      |_ -> (Util.raise_semantic_error e.loc "Variable not in scope")
+                    end
     | AccDeref(ex) -> 
       let tp=type_of_expr gamma ex 
       in
+      begin
       match tp with
-      | Tptr(typ) -> typ
-      | _ -> (Util.raise_semantic_error e.loc "Dereferencing a non pointer")
+        | Tptr(typ) -> typ
+        | _ -> (Util.raise_semantic_error e.loc "Dereferencing a non pointer")
+      end
     | AccIndex(a, ex) -> 
       let a_typ=type_of_access gamma a in
       match a_typ with
       | Tarr(a_typ, _) -> 
         if (type_of_expr gamma ex) = Tint then
           a_typ
-        else raise (Util.raise_semantic_error e.loc "Index is not an int")
-      | _ -> raise (Util.raise_semantic_error e.loc "Not an array")
+        else  (Util.raise_semantic_error e.loc "Index is not an int")
+      | _ ->  (Util.raise_semantic_error e.loc "Not an array")
   in
   match unpack e with
   | Access(a)  -> type_of_access gamma a
@@ -68,56 +85,73 @@ let rec type_of_expr gamma e=
     let e_typ=type_of_expr gamma ex in
     if a_typ=e_typ then
       match a_typ, e_typ with
-      | Tint, _  
-      | Tbool, _ 
-      | Tchar, _  
-      | Tptr(_), _ -> a_typ
-      | tp, _ -> (Util.raise_semantic_error e.loc "Cannot assign a type "^(show tp))
+      | Tint, _  -> a_typ
+      | tp, _ -> (Util.raise_semantic_error e.loc ("Cannot operator assign type "^(show_ttype tp)))
     else
       (Util.raise_semantic_error e.loc "Lvalue must be the same type of rvalue")   
-  | Assign(a, e) -> 
+  | Assign(a, ex) -> 
     let a_typ=type_of_access gamma a in
-        if (a_typ)=(type_of_expr gamma e) then 
-          a_typ
-        else raise (Type_error "type error on assignment")
-  | Addr(a) -> type_of_access gamma a
+    let e_typ=type_of_expr gamma ex in
+        if a_typ=e_typ then 
+          match a_typ, e_typ with
+          | Tarr(_), _ -> (Util.raise_semantic_error e.loc "Cannot assign Array type")
+          | _, _  -> a_typ
+        else (Util.raise_semantic_error e.loc "type error on assignment")
+  | Addr(a) -> 
+    let a_typ=type_of_access gamma a in
+    Tptr(a_typ)
   | ILiteral(_) -> Tint
   | BLiteral(_) -> Tbool
   | CLiteral(_) -> Tchar
-  
   | UnaryOp(uop, e) -> 
+    let op_typ= 
+      match uop with
+      | Neg -> Tfun(Tint, Tint)
+      | Not -> 
+        begin
+          match Symbol_table.lookup "!" gamma with
+          | {ttype; annotation} -> ttype
+        end
+      | PreInc | PreDec | PostInc | PostDec ->
+        Tfun(Tint, Tint)
+      | _ -> assert false
+      in
     let e_typ=type_of_expr gamma e in
-    let op_typ=Symbol_table.lookup (show_uop uop) gamma in 
     begin
       match op_typ with
-      | Tfun(tp1, tp2) -> if tp1=e_typ then tp2 else raise (Type_error ("Wrong type for" ^ (show_uop uop)))
-      | _ -> failwith "Inconsistent state"
+      | Tfun(tp1, tp2) -> if tp1=e_typ then tp2 else (Util.raise_semantic_error e.loc ("Wrong type for" ^ (show_uop uop)))
+      | _ -> assert false
     end
-  | BinaryOp(Equal, e1, e2) -> 
+  | BinaryOp(Equal, e1, e2) 
+  | BinaryOp(Neq, e1, e2) ->
       let typ1=type_of_expr gamma e1 in
       if typ1=(type_of_expr gamma e2) then Tbool
-      else raise (Type_error ("Wrong type for" ^ (show_binop Equal)))
+      else (Util.raise_semantic_error e.loc ("Wrong type for" ^ (show_binop Equal)))
   | BinaryOp(binop, e1, e2) ->
       let e1_tp=type_of_expr gamma e1 in
       let e2_tp=type_of_expr gamma e2 in
-      let op_typ=Symbol_table.lookup (show_binop binop) gamma in 
+      let op_typ=
+        match Symbol_table.lookup (binop_to_key binop) gamma with
+        | {ttype; annotation} -> ttype in 
       begin
       match op_typ with
         | Tfun(tp1, Tfun(tp2, tres)) ->
-          if (tp1=e1_tp && tp2=e2_tp) then tres else raise (Type_error ("error in the arguments of " ^ (show_binop binop)))
-        | _ -> failwith "Inconsistent state"
+          if (tp1=e1_tp && tp2=e2_tp) then tres else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ (show_binop binop)))
+        | _ -> assert false
       end
   | Call(id, expr_lst) -> 
-      let fun_typ=Symbol_table.lookup id gamma in 
+      let fun_typ=
+      match Symbol_table.lookup id gamma with
+      | {ttype; annotation} -> ttype in   
         let rec check_args f_tp args=
           match f_tp, args with
           | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
-                                  else raise (Type_error ("error in the arguments of " ^ id))
+                                  else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
           | Tfun(tp, tp'), x::[] -> if tp=(type_of_expr gamma x) then tp' 
-                                    else raise (Type_error ("error in the arguments of " ^ id))
+                                    else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
           | Tfun(tp, tp'), x::xs -> if tp=(type_of_expr gamma x) then check_args tp' xs 
-                                    else raise (Type_error ("error in the arguments of " ^ id))
-          | _ -> raise (Type_error ("error in function " ^ id))
+                                    else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
+          | _ -> (Util.raise_semantic_error e.loc ("error in args of function " ^ id))
         in check_args fun_typ expr_lst
 
 let rec type_of_stmt gamma e=
@@ -126,52 +160,57 @@ let rec type_of_stmt gamma e=
     | Dec(typ, id) -> 
         let tp=type_of_typ gamma typ in
         begin
-          Symbol_table.add_entry id ({typp=tp; annotation=None}) gamma; 
+          Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma; 
           tp
         end
-    | Decinit(typ, id, expr) ->
-      let tp=type_of_typ gamma typ in
-      let e_tp=type_of_expr gamma expr in
-      if tp=e_tp then
-        Symbol_table.add_entry id {ttype=tp; annotation=None} gamma
-      else
-        raise (Type_error "Wrong type on variable declaration "^id)
     | Stmt(st) -> type_of_stmt gamma st
+    | Decinit(typ, id, ex) ->
+      let tp=type_of_typ gamma typ in
+      let e_tp=type_of_expr gamma ex in
+      if tp=e_tp then
+        begin
+          Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma;
+          tp
+        end
+      else
+        (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
+    
   in
   match unpack e with
   | If(e1, e2, e3) ->
       if (type_of_expr gamma e1) = Tbool then
         let t2=type_of_stmt gamma e2 in
         let t3 = type_of_stmt gamma e3 in
-        if t2=Treturn then
-            if t3=Treturn then
-              if t2=t3 then t3
-              else raise Type_error("Different return type")
-            else t2
-        else t3
-      else raise (Type_error "if with no boolean guard")
-  | While(e, stmt) -> 
-      if (type_of_typ gamma e) = Tbool then
+        match t2, t3 with
+        | Treturn(a),Treturn(b) -> 
+          if a=b then t3
+          else (Util.raise_semantic_error e.loc "Different return type")
+        | Treturn(_), _ -> t2
+        | _, Treturn(_) -> t3
+        | _, _ -> t3
+      else (Util.raise_semantic_error e.loc "if with no boolean guard")
+  | While(ex, stmt) -> 
+      if (type_of_expr gamma ex) = Tbool then
         type_of_stmt gamma stmt
       else
-        raise (Type_error "while with no boolean guard")
-  | DoWhile(stmt, e) -> 
-    if (type_of_typ gamma e) = Tbool then
+        (Util.raise_semantic_error e.loc "while with no boolean guard")
+  | DoWhile(stmt, ex) -> 
+    if (type_of_expr gamma ex) = Tbool then
       type_of_stmt gamma stmt
     else
-      raise (Type_error "while with no boolean guard")
+      (Util.raise_semantic_error e.loc "while with no boolean guard")
   | Expr(e) -> type_of_expr gamma e
-  | Return(e) -> 
+  | Return(ex) -> 
     begin
-      match e with
+      match ex with
       | None -> Treturn(Tvoid)
-      | Some(x) -> let tp=type_of_typ gamma e in 
+      | Some(x) -> let tp=type_of_expr gamma x in 
                     match tp with
                     | Tvoid 
                     | Tint
                     | Tchar
                     | Tbool-> Treturn(tp) 
-                    | _ -> raise (Type_error("Wrong return type"))
+                    | _ -> (Util.raise_semantic_error e.loc "Wrong return type")
     end
   | Block(lst) -> 
         (* if in function the scope is gamma and we need to check return type*)
@@ -188,7 +227,7 @@ let rec type_of_stmt gamma e=
           ht
       in
       if Hashtbl.length return_type_ht > 1 then 
-        raise (Type_error "Wrong return type")
+        (Util.raise_semantic_error e.loc "Wrong return type")
       else 
         begin
           let block_tp=
@@ -196,6 +235,7 @@ let rec type_of_stmt gamma e=
             in 
             Hashtbl.fold fol return_type_ht []
           in
+          Symbol_table.end_block scope;
           match block_tp with
             | [] -> Tvoid
             | x::[] -> x
@@ -205,7 +245,7 @@ let rec type_of_stmt gamma e=
   
 
 let rec type_of_topdecl gamma e=
-  match e with
+  match unpack e with
   | Fundecl({typ; fname; formals; body}) ->
     (*args are in function's scope*)
     let scope=Symbol_table.begin_block gamma in
@@ -213,14 +253,15 @@ let rec type_of_topdecl gamma e=
     let formals_tp=
         let f formal=
           match formal with
+          | (TypV, _) -> (Util.raise_semantic_error e.loc "Cannot use void type")
           | (tp, id) -> 
             let tp1=(type_of_typ gamma tp)
             in
             begin
-              Symbol_table.add_entry id {typp=tp1; annotation=None} scope; 
+              Symbol_table.add_entry id {ttype=tp1; annotation=None} scope; 
               tp1
             end
-          | _ -> raise (Type_error ("error in function args definition"^fname))
+          | _ -> assert false
         in 
         List.map f formals
     in      
@@ -242,26 +283,51 @@ let rec type_of_topdecl gamma e=
         Symbol_table.add_entry fname {ttype=fun_tp; annotation=None} gamma;
         fun_tp
       end 
-    else raise (Type_error "Return type doesn't match function type "^fname)
+    else (Util.raise_semantic_error e.loc ("Return type doesn't match function type "^fname))
   | Vardec(typ, id) -> 
     let tp=type_of_typ gamma typ in
-    Symbol_table.add_entry id {ttype=tp; annotation=None} gamma
+    begin
+      Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
+      tp
+    end
   | Vardecinit(typ, id, expr) ->
     let tp=type_of_typ gamma typ in
     let e_tp=type_of_expr gamma expr in
     if tp=e_tp then
-      Symbol_table.add_entry id {ttype=tp; annotation=None} gamma
+      begin
+        Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
+        tp 
+      end
     else
-      raise (Type_error "Wrong type on variable declaration "^id)
+      (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
 
 
 
-    
+let base=[
+  ("+", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("-", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("*", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("/", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("%", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("<", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
+  (">", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation=None});
+  ("<=", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
+  (">=", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
+  ("||", {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
+  ("&&", {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
+  ("!", {ttype=Tfun(Tbool, Tbool); annotation= None});
+  ("print", {ttype=Tfun(Tint, Tvoid); annotation= None});
+  ("getint", {ttype=Tfun(Tvoid, Tint); annotation= None})
+]
+         
 (* add return type of the main *)
 let check (Prog(topdecls)) = 
-  let rec scan lst table=
+  let scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
+  let rec scan lst scope=
     match lst with
-    | {node;  loc ; id} ::xs -> type_of_topdecl node; scan xs table;
+    | x::xs -> type_of_topdecl scope x; scan xs scope
     | [] -> Tvoid
     in
- scan topdecls Symbol_table.begin_block(Symbol_table.empty_table)
+  let f (x, y)=Symbol_table.add_entry x y scope; () in
+    List.iter f base;
+ scan topdecls scope

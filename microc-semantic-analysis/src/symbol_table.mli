@@ -1,6 +1,5 @@
 exception DuplicateEntry
 
-type 'a entry_table 
 
 type 'a t
 
