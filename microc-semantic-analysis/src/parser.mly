@@ -82,7 +82,7 @@ topdecl:
 ;
 
 vardecinit:
- | vd=vardecl ASSIGN e=rexpr {(fst vd, (snd vd, e))}
+ | vd=vardecl ASSIGN e=expr {(fst vd, (snd vd, e))}
 ;
 
 vardecl:

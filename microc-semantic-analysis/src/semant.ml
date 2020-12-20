@@ -158,6 +158,16 @@ let rec type_of_stmt gamma e=
   let rec type_of_stmtordec gamma e=
     match unpack e with
     | Dec(typ, id) -> 
+      begin
+        match typ with
+        | TypA(tp, i) -> begin
+                        match i with
+                        | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
+                        | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
+                        | _ -> assert false
+                        end 
+        | _ -> ()
+      end;
         let tp=type_of_typ gamma typ in
         begin
           Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma; 
@@ -244,7 +254,7 @@ let rec type_of_stmt gamma e=
      
   
 
-let rec type_of_topdecl gamma e=
+let type_of_topdecl gamma e=
   match unpack e with
   | Fundecl({typ; fname; formals; body}) ->
     (*args are in function's scope*)
@@ -285,8 +295,19 @@ let rec type_of_topdecl gamma e=
       end 
     else (Util.raise_semantic_error e.loc ("Return type doesn't match function type "^fname))
   | Vardec(typ, id) -> 
+    begin
+      match typ with
+      | TypA(tp, i) -> begin
+                      match i with
+                      | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
+                      | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
+                      | _ -> assert false
+                      end 
+      | _ -> ()
+    end;
     let tp=type_of_typ gamma typ in
     begin
+      
       Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
       tp
     end
@@ -319,7 +340,9 @@ let base=[
   ("print", {ttype=Tfun(Tint, Tvoid); annotation= None});
   ("getint", {ttype=Tfun(Tvoid, Tint); annotation= None})
 ]
-         
+ 
+
+
 (* add return type of the main *)
 let check (Prog(topdecls)) = 
   let scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
@@ -330,4 +353,4 @@ let check (Prog(topdecls)) =
     in
   let f (x, y)=Symbol_table.add_entry x y scope; () in
     List.iter f base;
- scan topdecls scope
+  scan topdecls scope;
