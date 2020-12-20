@@ -40,11 +40,11 @@ let rec type_of_typ gamma e=
   match e with
   | TypA(tp, i) ->  let i_typ=
                       match i with
-                      | Some(x:int) -> Tint(*TODO*)
+                      | Some(x:int) -> Tint (*TODO*)
                       | None -> Tvoid (* solo se come arg in funzione *)
                       | _ -> assert false
                     in
-                    Tarr(type_of_typ gamma tp, i_typ)
+                    Tarr(type_of_typ gamma tp, i_typ, i)
   | TypP(tp) -> Tptr(type_of_typ gamma tp)
   | TypI -> Tint
   | TypB -> Tbool
@@ -72,7 +72,7 @@ let rec type_of_expr gamma e=
     | AccIndex(a, ex) -> 
       let a_typ=type_of_access gamma a in
       match a_typ with
-      | Tarr(a_typ, _) -> 
+      | Tarr(a_typ, _, _) -> (*maybe error if index is > array size*)
         if (type_of_expr gamma ex) = Tint then
           a_typ
         else  (Util.raise_semantic_error e.loc "Index is not an int")
@@ -153,6 +153,37 @@ let rec type_of_expr gamma e=
                                     else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
           | _ -> (Util.raise_semantic_error e.loc ("error in args of function " ^ id))
         in check_args fun_typ expr_lst
+  | ArrayInit(ls) -> 
+    let tp_ht= Hashtbl.create 0 in
+    begin
+      let f x=
+          let x_pt=type_of_expr gamma x in
+          begin
+            try
+              Hashtbl.find tp_ht x_pt; ()
+            with
+            | Not_found -> (Hashtbl.add tp_ht x_pt None)
+          end
+        in
+      List.iter f ls;
+      if (Hashtbl.length tp_ht) = 1 then (* must be 1 type *)
+        begin
+          let tp=
+            let fol key value lst= key::lst
+            in 
+            Hashtbl.fold fol tp_ht []
+          in
+          match tp with
+            | x::[] -> Tarr(x, Tint, Some(List.length ls))
+            | _ -> assert false
+        end
+      else
+        (Util.raise_semantic_error e.loc "Invalid array initializer type")
+      
+    end
+
+
+
 
 let rec type_of_stmt gamma e=
   let rec type_of_stmtordec gamma e=
@@ -226,11 +257,17 @@ let rec type_of_stmt gamma e=
         (* if in function the scope is gamma and we need to check return type*)
       let scope= if e.id=1 then gamma else Symbol_table.begin_block gamma in
         (* need to check all return type in the block *)
+      
       let return_type_ht = 
         let ht=Hashtbl.create 0 in
           let f stmtordec=
             match (type_of_stmtordec scope stmtordec) with
-              | Treturn(tp) -> Hashtbl.add ht tp tp
+              | Treturn(tp) -> begin
+                                try
+                                  Hashtbl.find ht tp; ()
+                                with
+                                |Not_found -> Hashtbl.add ht tp None
+                              end
               | _ -> ()
             in
           List.iter f lst; 
@@ -313,14 +350,17 @@ let type_of_topdecl gamma e=
     end
   | Vardecinit(typ, id, expr) ->
     let tp=type_of_typ gamma typ in
-    let e_tp=type_of_expr gamma expr in
-    if tp=e_tp then
+    let i_tp=type_of_expr gamma expr in
+    if tp=i_tp then
       begin
         Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
         tp 
       end
     else
-      (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
+      match tp, i_tp with
+      | Tarr(_, _, Some(x)), Tarr(_, _, Some(y)) -> (Util.raise_semantic_error e.loc ("Wrong size on array declaration "^id))
+      | _ ->
+        (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
 
 
 

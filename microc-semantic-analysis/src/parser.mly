@@ -82,7 +82,12 @@ topdecl:
 ;
 
 vardecinit:
- | vd=vardecl ASSIGN e=expr {(fst vd, (snd vd, e))}
+ | vd=vardecl ASSIGN i=init {(fst vd, (snd vd, i))}
+;
+
+init:
+ | LBRACE l=separated_list(COMMA, expr) RBRACE {ArrayInit(l) |@| $loc}
+ | e=expr {e}
 ;
 
 vardecl:
