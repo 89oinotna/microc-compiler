@@ -155,7 +155,7 @@ expr:
 ;
 
 lexpr:
-  | id=ID                   {AccVar(id) |@| $loc}
+  | id=ID                         {AccVar(id) |@| $loc}
   | LPAREN le=lexpr RPAREN        {le}
   | TIMES le=lexpr                {AccDeref(Access(le)|@| $loc) |@| $loc}
   | TIMES ae=aexpr                {AccDeref(ae) |@| $loc}
@@ -200,18 +200,18 @@ rexpr:
   | e1 = expr L_AND e2 = expr
     { BinaryOp(And, e1, e2) |@| $loc }
   | id=ID LPAREN l=separated_list(COMMA, expr) RPAREN
-    {Call(id, l) |@| $loc}
+    { Call(id, l) |@| $loc }
 ;
 
 
 aexpr:
-  | i=LINT                      {ILiteral(i) |@| $loc}
-  | c=LCHAR                     {CLiteral(c) |@| $loc}
-  | TRUE                        {BLiteral(true) |@| $loc}
-  | FALSE                       {BLiteral(false) |@| $loc}
-  | NULL                        {Access(AccVar("NULL")|@| $loc)|@| $loc}
-  | LPAREN re=rexpr RPAREN      {re}
-  | AND le=lexpr                {Addr(le) |@| $loc}    
+  | i=LINT                      { ILiteral(i) |@| $loc }
+  | c=LCHAR                     { CLiteral(c) |@| $loc }
+  | TRUE                        { BLiteral(true) |@| $loc }
+  | FALSE                       { BLiteral(false) |@| $loc }
+  | NULL                        { Access(AccVar("NULL")|@| $loc)|@| $loc }
+  | LPAREN re=rexpr RPAREN      { re}
+  | AND le=lexpr                { Addr(le) |@| $loc }    
 ;
 
 

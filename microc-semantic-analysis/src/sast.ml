@@ -3,6 +3,7 @@ type ttype =
   | Tbool
   | Tchar
   | Tvoid
+  | Tnull
   | Tarr of ttype * ttype * int option
   | Tptr of ttype
   | Tfun of ttype * ttype

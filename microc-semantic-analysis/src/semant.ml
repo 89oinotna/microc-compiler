@@ -21,6 +21,12 @@ let unpack ann_node=
   | { loc; node; id} -> node
   | _  -> assert false
 
+let type_eq a b=
+  match a, b with
+  | Tptr(_), Tnull 
+  | Tnull, Tptr(_) -> true
+  | a, b -> (a=b)
+
 let binop_to_key op=
 match op with
 | Add -> "+"
@@ -83,7 +89,7 @@ let rec type_of_expr gamma e=
   | OpAssign(_, a, ex) -> 
     let a_typ=type_of_access gamma a in
     let e_typ=type_of_expr gamma ex in
-    if a_typ=e_typ then
+    if (type_eq a_typ e_typ) then
       match a_typ, e_typ with
       | Tint, _  -> a_typ
       | tp, _ -> (Util.raise_semantic_error e.loc ("Cannot operator assign type "^(show_ttype tp)))
@@ -92,7 +98,7 @@ let rec type_of_expr gamma e=
   | Assign(a, ex) -> 
     let a_typ=type_of_access gamma a in
     let e_typ=type_of_expr gamma ex in
-        if a_typ=e_typ then 
+        if (type_eq a_typ e_typ) then 
           match a_typ, e_typ with
           | Tarr(_), _ -> (Util.raise_semantic_error e.loc "Cannot assign Array type")
           | _, _  -> a_typ
@@ -119,13 +125,13 @@ let rec type_of_expr gamma e=
     let e_typ=type_of_expr gamma e in
     begin
       match op_typ with
-      | Tfun(tp1, tp2) -> if tp1=e_typ then tp2 else (Util.raise_semantic_error e.loc ("Wrong type for" ^ (show_uop uop)))
+      | Tfun(tp1, tp2) -> if (type_eq tp1 e_typ) then tp2 else (Util.raise_semantic_error e.loc ("Wrong type for" ^ (show_uop uop)))
       | _ -> assert false
     end
   | BinaryOp(Equal, e1, e2) 
   | BinaryOp(Neq, e1, e2) ->
       let typ1=type_of_expr gamma e1 in
-      if typ1=(type_of_expr gamma e2) then Tbool
+      if (type_eq typ1 (type_of_expr gamma e2)) then Tbool
       else (Util.raise_semantic_error e.loc ("Wrong type for" ^ (show_binop Equal)))
   | BinaryOp(binop, e1, e2) ->
       let e1_tp=type_of_expr gamma e1 in
@@ -136,7 +142,7 @@ let rec type_of_expr gamma e=
       begin
       match op_typ with
         | Tfun(tp1, Tfun(tp2, tres)) ->
-          if (tp1=e1_tp && tp2=e2_tp) then tres else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ (show_binop binop)))
+          if ((type_eq tp1 e1_tp) && (type_eq tp2 e2_tp)) then tres else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ (show_binop binop)))
         | _ -> assert false
       end
   | Call(id, expr_lst) -> 
@@ -147,9 +153,9 @@ let rec type_of_expr gamma e=
           match f_tp, args with
           | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
                                   else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
-          | Tfun(tp, tp'), x::[] -> if tp=(type_of_expr gamma x) then tp' 
+          | Tfun(tp, tp'), x::[] -> if (type_eq tp (type_of_expr gamma x)) then tp' 
                                     else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
-          | Tfun(tp, tp'), x::xs -> if tp=(type_of_expr gamma x) then check_args tp' xs 
+          | Tfun(tp, tp'), x::xs -> if (type_eq tp (type_of_expr gamma x)) then check_args tp' xs 
                                     else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
           | _ -> (Util.raise_semantic_error e.loc ("error in args of function " ^ id))
         in check_args fun_typ expr_lst
@@ -183,8 +189,6 @@ let rec type_of_expr gamma e=
     end
 
 
-
-
 let rec type_of_stmt gamma e=
   let rec type_of_stmtordec gamma e=
     match unpack e with
@@ -208,14 +212,16 @@ let rec type_of_stmt gamma e=
     | Decinit(typ, id, ex) ->
       let tp=type_of_typ gamma typ in
       let e_tp=type_of_expr gamma ex in
-      if tp=e_tp then
+      if (type_eq tp e_tp) then
         begin
           Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma;
           tp
         end
       else
-        (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
-    
+        match tp, e_tp with
+        | Tarr(_, _, Some(x)), Tarr(_, _, Some(y)) -> (Util.raise_semantic_error e.loc ("Wrong size on array declaration "^id))
+        | _ ->
+          (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
   in
   match unpack e with
   | If(e1, e2, e3) ->
@@ -224,7 +230,7 @@ let rec type_of_stmt gamma e=
         let t3 = type_of_stmt gamma e3 in
         match t2, t3 with
         | Treturn(a),Treturn(b) -> 
-          if a=b then t3
+          if (type_eq a b) then t3
           else (Util.raise_semantic_error e.loc "Different return type")
         | Treturn(_), _ -> t2
         | _, Treturn(_) -> t3
@@ -274,7 +280,23 @@ let rec type_of_stmt gamma e=
           ht
       in
       if Hashtbl.length return_type_ht > 1 then 
-        (Util.raise_semantic_error e.loc "Wrong return type")
+        begin
+          try
+            Hashtbl.find return_type_ht Tnull; 
+            Hashtbl.remove return_type_ht Tnull;
+            let block_tp=
+              let fol key value lst= key::lst
+              in 
+              Hashtbl.fold fol return_type_ht []
+            in
+            Symbol_table.end_block scope;
+            match block_tp with
+              | [] -> Tvoid
+              | x::[] -> x
+              | _ -> assert false
+          with
+          | Not_found -> (Util.raise_semantic_error e.loc "Wrong return type")
+        end 
       else 
         begin
           let block_tp=
@@ -316,7 +338,7 @@ let type_of_topdecl gamma e=
     let ftyp=type_of_typ gamma typ in
     (*body*)
     let btyp=type_of_stmt scope body in  
-    if ftyp = btyp then(*end block*) 
+    if (type_eq ftyp btyp) then(*end block*) 
       let fun_tp= (* build fun type and insert it in the scope *)
         let rec build_tp ls =
           match ls with
@@ -351,7 +373,7 @@ let type_of_topdecl gamma e=
   | Vardecinit(typ, id, expr) ->
     let tp=type_of_typ gamma typ in
     let i_tp=type_of_expr gamma expr in
-    if tp=i_tp then
+    if (type_eq tp i_tp) then
       begin
         Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
         tp 
@@ -378,10 +400,10 @@ let base=[
   ("&&", {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
   ("!", {ttype=Tfun(Tbool, Tbool); annotation= None});
   ("print", {ttype=Tfun(Tint, Tvoid); annotation= None});
-  ("getint", {ttype=Tfun(Tvoid, Tint); annotation= None})
+  ("getint", {ttype=Tfun(Tvoid, Tint); annotation= None});
+  ("NULL", {ttype=Tnull; annotation= None});
 ]
  
-
 
 (* add return type of the main *)
 let check (Prog(topdecls)) = 
