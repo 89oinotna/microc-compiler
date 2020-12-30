@@ -6,7 +6,6 @@ type binop = Add | Sub | Mult | Div  | Mod | Equal | Neq | Less | Leq |
 
 type uop = Neg | Not | PreInc | PreDec | PostInc | PostDec [@@deriving show]
 
-type opa= Add | Sub | Div | Mult | Mod [@@deriving show]
 
 type identifier = string [@@deriving show]
 
@@ -27,7 +26,7 @@ type typ =
 and expr =  expr_node annotated_node                                                   
 and expr_node =     
   | Access of access                 (* x    or  *p    or  a[e]     *) 
-  | OpAssign of opa * access * expr  (* x+=e x-=e ...               *)
+  | OpAssign of binop * access * expr  (* x+=e x-=e ...               *)
   | Assign of access * expr          (* x=e  or  *p=e  or  a[e]=e   *)
   | Addr of access                   (* &x   or  &*p   or  &a[e]    *)
   | ILiteral of int                  (* Integer literal             *)
@@ -36,6 +35,7 @@ and expr_node =
   | UnaryOp of uop * expr            (* Unary primitive operator    *)
   | BinaryOp of binop * expr * expr  (* Binary primitive operator   *)
   | Call of identifier * expr list   (* Function call f(...)        *)
+  | ArrayInit of expr list           (* int a[3]={1,2,3} *)
   [@@deriving show]
 
 and access = access_node annotated_node

@@ -9,9 +9,9 @@ type 'a entry_table={
   [@@deriving show]
 
 let unpack ann_node=
-match ann_node with
-| { loc; node; id} -> node
-| _  -> assert false
+  match ann_node with
+  | { loc; node; id} -> node
+  | _  -> assert false
 
 (* The LLVM global context *)
 let llcontext = L.global_context ()
@@ -62,11 +62,12 @@ let primitive_operators =
 let rec codegen_expr gamma ibuilder e=
   let rec codegen_access gamma ibuilder e=
     match e with
-    | Accvar(id) -> 
+    | AccVar(id) -> 
       let var=Symbol_table.lookup id gamma in
       L.build_load var id ibuilder
     | AccDeref(ex) ->
       let ptr=Symbol_table.lookup id gamma in
+      ()
     | AccIndex(a, ex) ->
   in
   match e with

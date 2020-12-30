@@ -35,6 +35,7 @@ and expr_node =
   | UnaryOp of uop * expr            (* Unary primitive operator    *)
   | BinaryOp of binop * expr * expr  (* Binary primitive operator   *)
   | Call of identifier * expr list   (* Function call f(...)        *)
+  | ArrayInit of expr list           (* int a[3]={1,2,3} *)
   [@@deriving show]
 
 and access = access_node annotated_node
