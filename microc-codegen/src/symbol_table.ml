@@ -3,7 +3,7 @@ exception DuplicateEntry
 exception Nf of string
 
 
-type 'a t = Empty| Table of (string, 'a) Hashtbl.t Array.t (* TODO: this is a dummy definition *)
+type 'a t = Empty | Table of 'a t * (string, 'a) Hashtbl.t (* parent * vars *) (* TODO: this is a dummy definition *)
 
 let empty_table = Empty
 (* used to store all key -> entry 
@@ -15,45 +15,35 @@ let empty_table = Empty
 
 let begin_block (table: 'a t)  = 
   match table with
-  | Empty -> Table([|(Hashtbl.create 1)|])
-  | Table(t) -> Table(Array.append t [|(Hashtbl.create 1)|]) (* return table of new block *)
+  | Empty -> Table(Empty, (Hashtbl.create 1))
+  | x -> Table(x, (Hashtbl.create 1)) (* return table of new block *)
 
 
-let end_block (Table table) =
-  let len=Array.length table in
-  begin
-    let f key data=Hashtbl.remove table.(0) key
-      in
-    Hashtbl.iter f table.(len - 1);
-    Table(Array.sub table 0 (len-2))
-  end
+let end_block (Table (parent, vars)) =
+  parent
 
-let add_entry symbol info (table: 'a t) = (*check if exists 
-    if it is in the same scope => error
-      otherwise shadows it*)
-  
+let add_entry symbol info (table: 'a t) = 
+(*if it is in the same scope => error
+  otherwise shadows it*)
   match table with
   | Empty -> assert false
-  | Table(tb) ->
+  | Table(parent, vars) as x ->
     try
-      let tp=Hashtbl.find tb.(0) symbol
+      let tp=Hashtbl.find vars symbol
           in raise DuplicateEntry
     with
     | Not_found -> 
-            begin
-            if ((Array.length tb)-1) >0 then
-              Hashtbl.add tb.((Array.length tb)-1) symbol info
-            end;
-            Hashtbl.add tb.(0) symbol info;
-          
-            table
+            Hashtbl.add vars symbol info;
+            x
   
 
-let lookup symbol (Table table) = 
-  Hashtbl.iter (fun x y -> Printf.printf " %s " x) table.(0);
-  Printf.printf "%s\n" symbol;
-  try Hashtbl.find table.(0) symbol with
-  | Not_found -> raise (Nf symbol)
+let rec lookup symbol (Table (parent, vars)) = 
+  try Hashtbl.find vars symbol with
+  | Not_found -> 
+    match parent with 
+    | Empty ->raise (Nf symbol)
+    | x -> lookup symbol parent
+    
 
 (*let rec lookup symbol table = Hashtbl.find symbol base_table*)
 

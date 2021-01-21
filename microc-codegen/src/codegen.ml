@@ -88,6 +88,7 @@ let rec codegen_access gamma ibuilder e=
       let expr=codegen_expr gamma ibuilder e in
       codegen_le gamma ibuilder le (*TODO*) *)
 
+
 let rec codegen_expr gamma ibuilder e=
       match unpack e with
       | Access(le) -> 
@@ -134,41 +135,66 @@ and codegen_re gamma ibuilder e=
       begin
         match uop with
         | Not -> 
-          let var=codegen_expr gamma ibuilder e in
+          let var=
+            match unpack e with
+            | Access(le) -> codegen_le gamma ibuilder le
+            |_ -> assert false
+            in
           let var_val= L.build_load var "" ibuilder in
           let op=L.build_not var_val "" ibuilder in
           let _=L.build_store op var ibuilder in
           var_val
         | Neg -> 
-          let var=codegen_expr gamma ibuilder e in
+          let var=
+            match unpack e with
+            | Access(le) -> codegen_le gamma ibuilder le
+            |_ -> assert false
+            in
           let var_val= L.build_load var "" ibuilder in
           let op=L.build_neg var_val "" ibuilder in
           let _=L.build_store op var ibuilder in
           var_val
         | PreInc -> 
-          let var=codegen_expr gamma ibuilder e in
+          let var=
+            match unpack e with
+            | Access(le) -> codegen_le gamma ibuilder le
+            |_ -> assert false
+            in
+          (*let var=codegen_expr gamma ibuilder e in*)
           let var_val= L.build_load var "" ibuilder in
           let op=L.build_add (L.const_int int_type 1) var_val "" ibuilder in
           let _=L.build_store op var ibuilder in
-          var_val
+          op
         | PreDec -> 
-          let var=codegen_expr gamma ibuilder e in
+          let var=
+            match unpack e with
+            | Access(le) -> codegen_le gamma ibuilder le
+            |_ -> assert false
+            in
+          let var_val= L.build_load var "" ibuilder in
+          let op=L.build_sub (L.const_int int_type 1) var_val "" ibuilder in
+          let _=L.build_store op var ibuilder in
+          op
+        | PostInc ->
+          let var=
+            match unpack e with
+            | Access(le) -> codegen_le gamma ibuilder le
+            |_ -> assert false
+            in
+          let var_val= L.build_load var "" ibuilder in
+          let op=L.build_add (L.const_int int_type 1) var_val "" ibuilder in
+          let _=L.build_store op var ibuilder in
+          var_val
+        | PostDec ->
+          let var=
+            match unpack e with
+            | Access(le) -> codegen_le gamma ibuilder le
+            |_ -> assert false
+            in
           let var_val= L.build_load var "" ibuilder in
           let op=L.build_sub (L.const_int int_type 1) var_val "" ibuilder in
           let _=L.build_store op var ibuilder in
           var_val
-        | PostInc ->
-          let var=codegen_expr gamma ibuilder e in
-          let var_val= L.build_load var "" ibuilder in
-          let op=L.build_add (L.const_int int_type 1) var_val "" ibuilder in
-          let _=L.build_store op var ibuilder in
-          op
-        | PostDec ->
-          let var=codegen_expr gamma ibuilder e in
-          let var_val= L.build_load var "" ibuilder in
-          let op=L.build_sub (L.const_int int_type 1) var_val "" ibuilder in
-          let _=L.build_store op var ibuilder in
-          op
       end
     | BinaryOp(bop, e1, e2) -> 
       let te1 = codegen_expr gamma ibuilder e1 in 
@@ -180,23 +206,38 @@ and codegen_re gamma ibuilder e=
       let llargs=List.map (codegen_expr gamma ibuilder) lst in 
       L.build_call f (Array.of_list llargs) "" ibuilder
     | _ -> codegen_ae gamma ibuilder e
-
+(*Add or not terminator depending on last instruction (terminal) *)
+let add_terminator ibuilder next=
+  let terminator= L.block_terminator (L.insertion_block ibuilder) in
+        match terminator with
+        | Some _ -> ()
+        | None -> ignore(L.build_br next ibuilder)
 
 let rec codegen_stmt current_fun gamma ibuilder e= 
   match unpack e with
+  | If(e1, st1, {node=Block([]); id=id}) -> 
+      let bthen = L.append_block llcontext "then" current_fun in 
+      let bcont = L.append_block llcontext "cont" current_fun in 
+      let te1 = codegen_expr gamma ibuilder e1 in 
+      let _ = L.build_cond_br te1 bthen bcont ibuilder in
+      let te2 =L.position_at_end bthen ibuilder in
+      let _ = codegen_stmt current_fun gamma ibuilder st1 in  
+        add_terminator ibuilder bcont;
+        L.position_at_end bcont ibuilder;
+        ibuilder
   | If(e1, st1, st2) ->
       let bthen = L.append_block llcontext "then" current_fun in 
       let belse = L.append_block llcontext "else" current_fun in 
       let bcont = L.append_block llcontext "cont" current_fun in 
       let te1 = codegen_expr gamma ibuilder e1 in 
       let _ = L.build_cond_br te1 bthen belse ibuilder in
-      let _=Llvm.position_at_end bthen ibuilder in
+      let _ = L.position_at_end bthen ibuilder in
       let te2 = codegen_stmt current_fun gamma ibuilder st1 in 
-      let _ = L.build_br belse ibuilder in 
-      let _=Llvm.position_at_end belse ibuilder in
+      let _ = add_terminator ibuilder bcont in 
+      let _=L.position_at_end belse ibuilder in
       let te3 = codegen_stmt current_fun gamma ibuilder st2 in 
-      let _ = L.build_br bcont ibuilder in 
-        Llvm.position_at_end bcont ibuilder;
+      let _ = add_terminator ibuilder bcont in 
+        L.position_at_end bcont ibuilder;
         ibuilder
         (*Llvm.build_phi [(te2, bthen) ; (te3, belse)] "phi" ibuilder*)
   | While(e, stmt) ->
@@ -237,7 +278,7 @@ let rec codegen_stmt current_fun gamma ibuilder e=
     end);
     ibuilder
   | Block(lst) -> 
-      List.fold_left (codegen_stmtordec current_fun gamma) ibuilder lst;
+      ignore(List.fold_left (codegen_stmtordec current_fun gamma) ibuilder lst);
         ibuilder
 and codegen_stmtordec current_fun gamma ibuilder e=
     match unpack e with
@@ -280,7 +321,7 @@ let codegen_fundecl gamma {typ; fname; formals; body;} llmodule=
       i+1
     in List.fold_left f 0 formals 
   in
-   codegen_stmt fundef scope ibuilder body;
+   ignore(codegen_stmt fundef scope ibuilder body);
    fundef
   
 
@@ -299,20 +340,22 @@ let codegen_topdecl gamma e llmodule=
     global *)
 
 (* Declare in the current module the print prototype *)  
-let print_declaration llvm_module =
+let print_declaration llvm_module scope =
   let print_t = L.function_type void_type [| int_type |] in
-  L.declare_function "print" print_t llvm_module     
+  let decl=L.declare_function "print" print_t llvm_module in
+  Symbol_table.add_entry "print" ({llvalue=decl; annotation=None}) scope
 
 (* Declare in the current module the getint prototype *)  
-let getint_declaration llvm_module =
+let getint_declaration llvm_module scope =
   let getint_t = L.function_type int_type [| |] in
-  L.declare_function "getint" getint_t llvm_module            
+  let decl=L.declare_function "getint" getint_t llvm_module in
+  Symbol_table.add_entry "getint" ({llvalue=decl; annotation=None}) scope           
 
 let to_ir (Prog(topdecls)) =
   let scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
   let llmodule = L.create_module llcontext "microc-module" in 
-    print_declaration llmodule |> ignore;
-    getint_declaration llmodule |> ignore;
+    print_declaration llmodule scope |> ignore;
+    getint_declaration llmodule scope |> ignore;
     let rec scan lst scope llmodule=
       match lst with
       | x::[] -> codegen_topdecl scope x llmodule

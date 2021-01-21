@@ -140,18 +140,20 @@ let rec type_of_expr gamma e=
       end
   | Call(id, expr_lst) -> 
       let fun_typ=
-      match Symbol_table.lookup id gamma with
-      | {ttype; annotation} -> ttype in   
-        let rec check_args f_tp args=
-          match f_tp, args with
-          | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
+        match Symbol_table.lookup id gamma with
+        | {ttype; annotation} -> ttype
+      in   
+      let rec check_args f_tp args=
+        match f_tp, args with
+        | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
+                                else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
+        | Tfun(tp, tp'), x::[] -> if (type_eq tp (type_of_expr gamma x)) then tp' 
                                   else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
-          | Tfun(tp, tp'), x::[] -> if (type_eq tp (type_of_expr gamma x)) then tp' 
-                                    else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
-          | Tfun(tp, tp'), x::xs -> if (type_eq tp (type_of_expr gamma x)) then check_args tp' xs 
-                                    else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
-          | _ -> (Util.raise_semantic_error e.loc ("error in args of function " ^ id))
-        in check_args fun_typ expr_lst
+        | Tfun(tp, tp'), x::xs -> if (type_eq tp (type_of_expr gamma x)) then check_args tp' xs 
+                                  else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
+        | _ -> (Util.raise_semantic_error e.loc ("error in args of function " ^ id))
+      in 
+      check_args fun_typ expr_lst
   | ArrayInit(ls) -> 
     let tp_ht= Hashtbl.create 0 in
     begin
@@ -183,39 +185,6 @@ let rec type_of_expr gamma e=
 
 
 let rec type_of_stmt gamma e=
-  let rec type_of_stmtordec gamma e=
-    match unpack e with
-    | Dec(typ, id) -> 
-      begin
-        match typ with
-        | TypA(tp, i) -> begin
-                        match i with
-                        | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
-                        | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
-                        | _ -> assert false
-                        end 
-        | _ -> ()
-      end;
-        let tp=type_of_typ gamma typ in
-        begin
-          Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma; 
-          tp
-        end
-    | Stmt(st) -> type_of_stmt gamma st
-    | Decinit(typ, id, ex) ->
-      let tp=type_of_typ gamma typ in
-      let e_tp=type_of_expr gamma ex in
-      if (type_eq tp e_tp) then
-        begin
-          Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma;
-          tp
-        end
-      else
-        match tp, e_tp with
-        | Tarr(_, _, Some(x)), Tarr(_, _, Some(y)) -> (Util.raise_semantic_error e.loc ("Wrong size on array declaration "^id))
-        | _ ->
-          (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
-  in
   match unpack e with
   | If(e1, e2, e3) ->
       if (type_of_expr gamma e1) = Tbool then
@@ -253,14 +222,12 @@ let rec type_of_stmt gamma e=
                     | _ -> (Util.raise_semantic_error e.loc "Wrong return type")
     end
   | Block(lst) -> 
-        (* if in function the scope is gamma and we need to check return type*)
-      let scope= if e.id=1 then gamma else Symbol_table.begin_block gamma in
+      let scope= Symbol_table.begin_block gamma in
         (* need to check all return type in the block *)
-      
-      let return_type_ht = 
+       let return_type_ht = 
         let ht=Hashtbl.create 0 in
           let f stmtordec=
-            match (type_of_stmtordec scope stmtordec) with
+            match (type_of_stmtordec gamma stmtordec) with
               | Treturn(tp) -> begin
                                 try
                                   Hashtbl.find ht tp; ()
@@ -272,39 +239,98 @@ let rec type_of_stmt gamma e=
           List.iter f lst; 
           ht
       in
-      if Hashtbl.length return_type_ht > 1 then 
-        begin
-          try
-            Hashtbl.find return_type_ht Tnull; 
-            Hashtbl.remove return_type_ht Tnull;
-            let block_tp=
+      let block_tp=
               let fol key value lst= key::lst
               in 
               Hashtbl.fold fol return_type_ht []
-            in
-            Symbol_table.end_block scope;
-            match block_tp with
-              | [] -> Tvoid
-              | x::[] -> x
-              | _ -> assert false
-          with
-          | Not_found -> (Util.raise_semantic_error e.loc "Wrong return type")
-        end 
-      else 
+      in
+      begin
+      if Hashtbl.length return_type_ht > 1 then 
+          try
+            Hashtbl.find return_type_ht Tnull; 
+            Hashtbl.remove return_type_ht Tnull;
+          with 
+            | Not_found -> (Util.raise_semantic_error e.loc "Wrong return type")
+      end;
+      begin
+      match block_tp with
+        | [] -> Tvoid
+        | x::[] -> x
+        | _ -> assert false
+      end
+ and type_of_stmtordec gamma e=
+    match unpack e with
+    | Dec(typ, id) -> 
+      begin
+        match typ with
+        | TypA(tp, i) -> begin
+                        match i with
+                        | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
+                        | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
+                        | _ -> assert false
+                        end 
+        | _ -> ()
+      end;
+        let tp=type_of_typ gamma typ in
         begin
-          let block_tp=
-            let fol key value lst= key::lst
-            in 
-            Hashtbl.fold fol return_type_ht []
-          in
-          Symbol_table.end_block scope;
-          match block_tp with
-            | [] -> Tvoid
-            | x::[] -> x
-            | _ -> assert false
+          Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma; 
+          tp
         end
+    | Stmt(st) -> type_of_stmt gamma st
+    | Decinit(typ, id, ex) ->
+      let tp=type_of_typ gamma typ in
+      let e_tp=type_of_expr gamma ex in
+      if (type_eq tp e_tp) then
+        begin
+          Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma;
+          tp
+        end
+      else
+        match tp, e_tp with
+        | Tarr(_, _, Some(x)), Tarr(_, _, Some(y)) -> (Util.raise_semantic_error e.loc ("Wrong size on array declaration "^id))
+        | _ ->
+          (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
+      
+let type_of_function_body gamma e=
+  match unpack e with
+  | Block(lst) ->
+      let return_type_ht = 
+        let ht=Hashtbl.create 0 in
+          let f stmtordec=
+            match (type_of_stmtordec gamma stmtordec) with
+              | Treturn(tp) -> begin
+                                try
+                                  Hashtbl.find ht tp; ()
+                                with
+                                |Not_found -> Hashtbl.add ht tp None
+                              end
+              | _ -> ()
+            in
+          List.iter f lst; 
+          ht
+      in
+      let block_tp=
+              let fol key value lst= key::lst
+              in 
+              Hashtbl.fold fol return_type_ht []
+      in
+      begin
+      if Hashtbl.length return_type_ht > 1 then 
+          try
+            Hashtbl.find return_type_ht Tnull; 
+            Hashtbl.remove return_type_ht Tnull;
+          with 
+            | Not_found -> (Util.raise_semantic_error e.loc "Wrong return type")
+      end;
+      begin
+      match block_tp with
+        | [] -> Tvoid
+        | x::[] -> x
+        | _ -> assert false
+      end
+  | _ -> assert false
+      
      
-  
 
 let type_of_topdecl gamma e=
   match unpack e with
@@ -317,7 +343,7 @@ let type_of_topdecl gamma e=
           match formal with
           | (TypV, _) -> (Util.raise_semantic_error e.loc "Cannot use void type")
           | (tp, id) -> 
-            let tp1=(type_of_typ gamma tp)
+            let tp1=(type_of_typ scope tp)
             in
             begin
               Symbol_table.add_entry id {ttype=tp1; annotation=None} scope; 
@@ -328,9 +354,9 @@ let type_of_topdecl gamma e=
         List.map f formals
     in      
     (* fun type *)
-    let ftyp=type_of_typ gamma typ in
+    let ftyp=type_of_typ scope typ in
     (*body*)
-    let btyp=type_of_stmt scope body in  
+    let btyp=type_of_function_body scope body in  
     if (type_eq ftyp btyp) then(*end block*) 
       let fun_tp= (* build fun type and insert it in the scope *)
         let rec build_tp ls =
@@ -359,7 +385,6 @@ let type_of_topdecl gamma e=
       end;
       let tp=type_of_typ gamma typ in
       begin
-        
         Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
         tp
       end
@@ -400,12 +425,13 @@ let base=[
 
 (* add return type of the main *)
 let check (Prog(topdecls)) = 
-  let scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
+  let top_scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
+  let f (x, y)= Symbol_table.add_entry x y top_scope; () in
+  let _=  List.iter f base in
+  let scope=(Symbol_table.begin_block(top_scope)) in
   let rec scan lst scope=
     match lst with
+    | [] ->  Tvoid
     | x::xs -> type_of_topdecl scope x; scan xs scope
-    | [] -> Tvoid
     in
-  let f (x, y)= Symbol_table.add_entry x y scope; () in
-    List.iter f base;
   scan topdecls scope;
