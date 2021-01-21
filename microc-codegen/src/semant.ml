@@ -9,13 +9,6 @@ type 'a entry_table={
   [@@deriving show]
 
 
-let create_hashtable size init =
-  let tbl = Hashtbl.create size in
-  begin 
-    List.iter (fun (key, data) -> Hashtbl.add tbl key data) init;
-    tbl
-  end
-
 let unpack ann_node=
   match ann_node with
   | { loc; node; id} -> node
@@ -354,35 +347,35 @@ let type_of_topdecl gamma e=
       end 
     else (Util.raise_semantic_error e.loc ("Return type doesn't match function type "^fname))
   | Vardec(typ, id) -> 
-    begin
-      match typ with
-      | TypA(tp, i) -> begin
-                      match i with
-                      | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
-                      | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
-                      | _ -> assert false
-                      end 
-      | _ -> ()
-    end;
-    let tp=type_of_typ gamma typ in
-    begin
-      
-      Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
-      tp
-    end
-  | Vardecinit(typ, id, expr) ->
-    let tp=type_of_typ gamma typ in
-    let i_tp=type_of_expr gamma expr in
-    if (type_eq tp i_tp) then
       begin
+        match typ with
+        | TypA(tp, i) -> begin
+                        match i with
+                        | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
+                        | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
+                        | _ -> assert false
+                        end 
+        | _ -> ()
+      end;
+      let tp=type_of_typ gamma typ in
+      begin
+        
         Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
-        tp 
+        tp
       end
-    else
-      match tp, i_tp with
-      | Tarr(_, _, Some(x)), Tarr(_, _, Some(y)) -> (Util.raise_semantic_error e.loc ("Wrong size on array declaration "^id))
-      | _ ->
-        (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
+  | Vardecinit(typ, id, expr) ->
+      let tp=type_of_typ gamma typ in
+      let i_tp=type_of_expr gamma expr in
+      if (type_eq tp i_tp) then
+        begin
+          Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
+          tp 
+        end
+      else
+        match tp, i_tp with
+        | Tarr(_, _, Some(x)), Tarr(_, _, Some(y)) -> (Util.raise_semantic_error e.loc ("Wrong size on array declaration "^id))
+        | _ ->
+          (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
 
 
 
@@ -413,6 +406,6 @@ let check (Prog(topdecls)) =
     | x::xs -> type_of_topdecl scope x; scan xs scope
     | [] -> Tvoid
     in
-  let f (x, y)=Symbol_table.add_entry x y scope; () in
+  let f (x, y)= Symbol_table.add_entry x y scope; () in
     List.iter f base;
   scan topdecls scope;

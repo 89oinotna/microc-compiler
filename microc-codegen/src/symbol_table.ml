@@ -16,7 +16,7 @@ let empty_table = Empty
 let begin_block (table: 'a t)  = 
   match table with
   | Empty -> Table([|(Hashtbl.create 1)|])
-  |Table(t) -> Table(Array.append t [|(Hashtbl.create 1)|]) (* return table of new block *)
+  | Table(t) -> Table(Array.append t [|(Hashtbl.create 1)|]) (* return table of new block *)
 
 
 let end_block (Table table) =
@@ -40,12 +40,18 @@ let add_entry symbol info (table: 'a t) = (*check if exists
           in raise DuplicateEntry
     with
     | Not_found -> 
-            Hashtbl.add tb.(Array.length tb-1) symbol info;
+            begin
+            if ((Array.length tb)-1) >0 then
+              Hashtbl.add tb.((Array.length tb)-1) symbol info
+            end;
             Hashtbl.add tb.(0) symbol info;
+          
             table
   
 
 let lookup symbol (Table table) = 
+  Hashtbl.iter (fun x y -> Printf.printf " %s " x) table.(0);
+  Printf.printf "%s\n" symbol;
   try Hashtbl.find table.(0) symbol with
   | Not_found -> raise (Nf symbol)
 

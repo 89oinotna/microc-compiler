@@ -8,4 +8,4 @@ type ttype =
   | Tptr of ttype
   | Tfun of ttype * ttype
   | Treturn of ttype
-  [@@deriving show]
+[@@deriving show]
