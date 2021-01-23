@@ -11,7 +11,6 @@ type 'a entry_table={
 let unpack ann_node=
   match ann_node with
   | { loc; node; id} -> node
-  | _  -> assert false
 
 (* The LLVM global context *)
 let llcontext = L.global_context ()
@@ -127,8 +126,8 @@ and codegen_le gamma ibuilder e=
     | AccIndex(le, e) -> 
       let expr=codegen_expr gamma ibuilder e in
       let var=codegen_le gamma ibuilder le in
-      Printf.printf "%s" (L.string_of_lltype (L.element_type (L.type_of var)));
-        flush stdout;
+      (*Printf.printf "%s" (L.string_of_lltype (L.element_type (L.type_of var)));
+        flush stdout;*)
       begin
         match L.classify_type (L.element_type (L.type_of var)) with
         | Array -> L.build_in_bounds_gep var [|(Llvm.const_int int_type 0); expr |] "" ibuilder 
@@ -136,14 +135,17 @@ and codegen_le gamma ibuilder e=
         let ptr= L.build_load var "" ibuilder in
         L.build_gep ptr [| expr |] "" ibuilder 
      end
-      (*TODO*)
     | _ -> codegen_le gamma ibuilder e
 and codegen_re gamma ibuilder e= 
     match unpack e with
     | Assign(le, e) ->
       let var=codegen_le gamma ibuilder le in
       let expr= codegen_expr gamma ibuilder e in
-      L.build_store expr var ibuilder
+      let _=L.build_store expr var ibuilder in
+      L.build_load var "" ibuilder 
+      (*needed because assign can be used as parameter 
+        i could also move this part in the call part idk which is better
+      *)
     | OpAssign(op, le, e) -> 
       let (llvm_operator, label)=List.assoc op primitive_operators in
       let var=codegen_le gamma ibuilder le in
@@ -227,10 +229,9 @@ and codegen_re gamma ibuilder e=
       let array_to_ptr llvalue=
         begin
         match L.classify_type (L.element_type (L.type_of llvalue)) with
-        
         | Array -> 
-        Printf.printf "%s" (L.string_of_llvalue llvalue);
-        flush stdout;
+        (*Printf.printf "%s" (L.string_of_llvalue llvalue);
+        flush stdout;*)
         Llvm.build_in_bounds_gep llvalue [| (Llvm.const_int int_type 0) ; (Llvm.const_int int_type 0) |] "" ibuilder 
         | _ -> llvalue
         end;  
@@ -282,7 +283,7 @@ let rec codegen_stmt current_fun gamma ibuilder e=
       let _ = L.build_cond_br re bwhile bcont ibuilder in
       let _= L.position_at_end bwhile ibuilder in
       let body=codegen_stmt current_fun gamma ibuilder stmt in
-      let _=L.build_br bcond ibuilder in
+      let _=add_terminator ibuilder (L.build_br bcond) in
         L.position_at_end bcont ibuilder;
         ibuilder
     | DoWhile(stmt, e) -> 
@@ -295,7 +296,7 @@ let rec codegen_stmt current_fun gamma ibuilder e=
       let _=L.build_br pred ibuilder in
       L.position_at_end bwhile ibuilder;
       let re=codegen_expr gamma ibuilder e in
-      let _=L.build_cond_br re bwhile bcont ibuilder in
+      let _=add_terminator ibuilder (L.build_cond_br re bwhile bcont) in
         L.position_at_end bcont ibuilder;
         ibuilder
   | Expr(e) -> 
@@ -310,7 +311,18 @@ let rec codegen_stmt current_fun gamma ibuilder e=
     end);
     ibuilder
   | Block(lst) -> 
-      ignore(List.fold_left (codegen_stmtordec current_fun gamma) ibuilder lst);
+      ignore(List.fold_left (
+        fun (ibuilder, cond) y -> 
+          if cond then (ibuilder, cond)
+          else
+            match unpack y with
+              | Stmt(st) -> begin
+                            match unpack st with
+                            | Return(_) -> (codegen_stmtordec current_fun gamma ibuilder y, true);
+                            | _ -> (codegen_stmtordec current_fun gamma ibuilder y, cond)
+                            end
+              | _ -> (codegen_stmtordec current_fun gamma ibuilder y, cond)) 
+          (ibuilder, false) lst);
         ibuilder
 and codegen_stmtordec current_fun gamma ibuilder e=
     match unpack e with

@@ -12,7 +12,6 @@ type 'a entry_table={
 let unpack ann_node=
   match ann_node with
   | { loc; node; id} -> node
-  | _  -> assert false
 
 let rec type_eq a b=
   match a, b with
@@ -43,7 +42,6 @@ let rec type_of_typ gamma e=
                       match i with
                       | Some(x:int) -> Tint (*TODO*)
                       | None -> Tvoid (* solo se come arg in funzione *)
-                      | _ -> assert false
                     in
                     Tarr(type_of_typ gamma tp, i_typ, i)
   | TypP(tp) -> Tptr(type_of_typ gamma tp)
@@ -115,7 +113,6 @@ let rec type_of_expr gamma e=
         end
       | PreInc | PreDec | PostInc | PostDec ->
         Tfun(Tint, Tint)
-      | _ -> assert false
       in
     let e_typ=type_of_expr gamma e in
     begin
@@ -143,7 +140,7 @@ let rec type_of_expr gamma e=
   | Call(id, expr_lst) -> 
       let fun_typ=
         match Symbol_table.lookup id gamma with
-        | {ttype; annotation} -> Printf.printf "%s" (show_ttype ttype); ttype
+        | {ttype; annotation} -> (*Printf.printf "%s" (show_ttype ttype);*) ttype
       in   
       let rec check_args f_tp args=
         match f_tp, args with
@@ -164,7 +161,7 @@ let rec type_of_expr gamma e=
           let x_pt=type_of_expr gamma x in
           begin
             try
-              Hashtbl.find tp_ht x_pt; ()
+              ignore(Hashtbl.find tp_ht x_pt); ()
             with
             | Not_found -> (Hashtbl.add tp_ht x_pt None)
           end
@@ -230,10 +227,10 @@ let rec type_of_stmt gamma e=
        let return_type_ht = 
         let ht=Hashtbl.create 0 in
           let f stmtordec=
-            match (type_of_stmtordec gamma stmtordec) with
+            match (type_of_stmtordec scope stmtordec) with
               | Treturn(tp) -> begin
                                 try
-                                  Hashtbl.find ht tp; ()
+                                  ignore(Hashtbl.find ht tp); ()
                                 with
                                 |Not_found -> Hashtbl.add ht tp None
                               end
@@ -250,7 +247,7 @@ let rec type_of_stmt gamma e=
       begin
       if Hashtbl.length return_type_ht > 1 then 
           try
-            Hashtbl.find return_type_ht Tnull; 
+            ignore(Hashtbl.find return_type_ht Tnull); 
             Hashtbl.remove return_type_ht Tnull;
           with 
             | Not_found -> (Util.raise_semantic_error e.loc "Wrong return type")
@@ -270,13 +267,13 @@ let rec type_of_stmt gamma e=
                         match i with
                         | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
                         | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
-                        | _ -> assert false
+                        
                         end 
         | _ -> ()
       end;
         let tp=type_of_typ gamma typ in
         begin
-          Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma; 
+          ignore(Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma); 
           tp
         end
     | Stmt(st) -> type_of_stmt gamma st
@@ -285,7 +282,7 @@ let rec type_of_stmt gamma e=
       let e_tp=type_of_expr gamma ex in
       if (type_eq tp e_tp) then
         begin
-          Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma;
+          ignore(Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma);
           tp
         end
       else
@@ -303,7 +300,7 @@ let type_of_function_body gamma e=
             match (type_of_stmtordec gamma stmtordec) with
               | Treturn(tp) -> begin
                                 try
-                                  Hashtbl.find ht tp; ()
+                                  ignore(Hashtbl.find ht tp); ()
                                 with
                                 |Not_found -> Hashtbl.add ht tp None
                               end
@@ -320,7 +317,7 @@ let type_of_function_body gamma e=
       begin
       if Hashtbl.length return_type_ht > 1 then 
           try
-            Hashtbl.find return_type_ht Tnull; 
+            ignore(Hashtbl.find return_type_ht Tnull); 
             Hashtbl.remove return_type_ht Tnull;
           with 
             | Not_found -> (Util.raise_semantic_error e.loc "Wrong return type")
@@ -349,10 +346,9 @@ let type_of_topdecl gamma e=
             let tp1=(type_of_typ scope tp)
             in
             begin
-              Symbol_table.add_entry id {ttype=tp1; annotation=None} scope; 
+              ignore(Symbol_table.add_entry id {ttype=tp1; annotation=None} scope); 
               tp1
             end
-          | _ -> assert false
         in 
         List.map f formals
     in      
@@ -383,13 +379,13 @@ let type_of_topdecl gamma e=
                         match i with
                         | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
                         | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
-                        | _ -> assert false
+                        
                         end 
         | _ -> ()
       end;
       let tp=type_of_typ gamma typ in
       begin
-        Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
+        ignore(Symbol_table.add_entry id {ttype=tp; annotation=None} gamma);
         tp
       end
   | Vardecinit(typ, id, expr) ->
@@ -397,7 +393,7 @@ let type_of_topdecl gamma e=
       let i_tp=type_of_expr gamma expr in
       if (type_eq tp i_tp) then
         begin
-          Symbol_table.add_entry id {ttype=tp; annotation=None} gamma;
+          ignore(Symbol_table.add_entry id {ttype=tp; annotation=None} gamma);
           tp 
         end
       else
@@ -430,12 +426,12 @@ let base=[
 (* add return type of the main *)
 let check (Prog(topdecls)) = 
   let top_scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
-  let f (x, y)= Symbol_table.add_entry x y top_scope; () in
+  let f (x, y)= ignore(Symbol_table.add_entry x y top_scope); () in
   let _=  List.iter f base in
   let scope=(Symbol_table.begin_block(top_scope)) in
   let rec scan lst scope=
     match lst with
     | [] ->  Tvoid
-    | x::xs -> type_of_topdecl scope x; scan xs scope
+    | x::xs -> ignore(type_of_topdecl scope x); scan xs scope
     in
   scan topdecls scope;

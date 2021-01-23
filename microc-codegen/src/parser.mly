@@ -29,7 +29,18 @@
 
   let compose f (g, s)=((fun x -> g(f(x))), s) (* using to compose with functions *)
   
-  
+  let for_init opt loc=
+    match opt with
+    | Some(x) -> Stmt(Expr(x) |@| loc) |@| loc
+    | None -> Stmt(Block([])|@| loc) |@| loc
+  let for_cond opt loc=
+    match opt with
+    | Some(x) -> x
+    | None -> ILiteral(1) |@| loc
+  let for_exp opt loc=
+    match opt with
+    | Some(x) -> Stmt(Expr(x)|@| loc) |@| loc
+    | None -> Stmt(Block([])|@| loc) |@| loc
 %}
 
 /* Tokens declarations TODO Remember to add null*/
@@ -132,14 +143,15 @@ stmt:
                                         {While(cond, st) |@| $loc}
   | DO st=block_stmt WHILE LPAREN cond=expr RPAREN SEMICOLON
                                         {DoWhile(st, cond) |@| $loc}
-  | FOR LPAREN e1=expr SEMICOLON e2=expr SEMICOLON e3=expr RPAREN st=block_stmt (* LBRACE body=list(stmtordec) RBRACE *)
+  | FOR LPAREN e1=option(expr) SEMICOLON e2=option(expr) SEMICOLON e3=option(expr) RPAREN st=block_stmt (* LBRACE body=list(stmtordec) RBRACE *)
                                         {Block([
-                                          Stmt(Expr(e1)|@| $loc) |@| $loc;
+                                          for_init e1 $loc
+                                          ;
                                           Stmt( 
-                                            While(e2, 
+                                            While(for_cond e2 $loc, 
                                                   Block(
                                                     [(Stmt(st)|@| $loc); 
-                                                    Stmt(Expr(e3)|@| $loc)|@| $loc])|@| $loc
+                                                    for_exp e3 $loc])|@| $loc
                                               (*Block(body@[Stmt(Expr(e3)|@| $loc) |@| $loc]) |@| $loc*)
                                             ) |@| $loc
                                           )|@| $loc
