@@ -32,7 +32,7 @@ let rec lltype_of_type = function
     let tp=lltype_of_type typ in
     begin
       match i with
-      |None -> L.array_type tp 0 
+      |None -> L.pointer_type tp
       |Some(x) -> L.array_type tp x
     end
   | TypP(typ) -> 
@@ -92,8 +92,17 @@ let rec codegen_access gamma ibuilder e=
 let rec codegen_expr gamma ibuilder e=
       match unpack e with
       | Access(le) -> 
+      
         let var=codegen_le gamma ibuilder le in
-        L.build_load var "" ibuilder
+        (*Printf.printf "%s" (L.string_of_lltype (L.type_of var));
+        flush stdout;*)
+        
+        begin
+        match L.classify_type (L.element_type (L.type_of var)) with
+        | Array -> var
+        | _ -> L.build_load var "" ibuilder
+        end;  
+        
       | _ -> codegen_re gamma ibuilder e
 and codegen_ae gamma ibuilder e= 
     match unpack e with
@@ -105,7 +114,8 @@ and codegen_ae gamma ibuilder e=
     | _ -> codegen_re gamma ibuilder e
 and codegen_le gamma ibuilder e= 
     match unpack e with
-    | AccVar(id) -> (Symbol_table.lookup id gamma).llvalue
+    | AccVar(id) -> (Symbol_table.lookup id gamma).llvalue 
+    (**type of eleement for pointr (Array) *)
     | AccDeref(e) -> 
         begin
           match unpack e with
@@ -116,7 +126,17 @@ and codegen_le gamma ibuilder e=
         end
     | AccIndex(le, e) -> 
       let expr=codegen_expr gamma ibuilder e in
-      codegen_le gamma ibuilder le (*TODO*)
+      let var=codegen_le gamma ibuilder le in
+      Printf.printf "%s" (L.string_of_lltype (L.element_type (L.type_of var)));
+        flush stdout;
+      begin
+        match L.classify_type (L.element_type (L.type_of var)) with
+        | Array -> L.build_in_bounds_gep var [|(Llvm.const_int int_type 0); expr |] "" ibuilder 
+        | _ -> 
+        let ptr= L.build_load var "" ibuilder in
+        L.build_gep ptr [| expr |] "" ibuilder 
+     end
+      (*TODO*)
     | _ -> codegen_le gamma ibuilder e
 and codegen_re gamma ibuilder e= 
     match unpack e with
@@ -135,25 +155,25 @@ and codegen_re gamma ibuilder e=
       begin
         match uop with
         | Not -> 
-          let var=
-            match unpack e with
+          let var=codegen_expr gamma ibuilder e
+            (*match unpack e with
             | Access(le) -> codegen_le gamma ibuilder le
             |_ -> assert false
             in
-          let var_val= L.build_load var "" ibuilder in
-          let op=L.build_not var_val "" ibuilder in
-          let _=L.build_store op var ibuilder in
-          var_val
+          let var_val= L.build_load var "" ibuilder*) in
+          let op=L.build_not var "" ibuilder in
+          (*let _=L.build_store op var ibuilder in*)
+          op
         | Neg -> 
-          let var=
+          let var=codegen_expr gamma ibuilder e(*
             match unpack e with
             | Access(le) -> codegen_le gamma ibuilder le
             |_ -> assert false
             in
-          let var_val= L.build_load var "" ibuilder in
-          let op=L.build_neg var_val "" ibuilder in
-          let _=L.build_store op var ibuilder in
-          var_val
+          let var_val= L.build_load var "" ibuilder *)in
+          let op=L.build_neg var "" ibuilder in
+          (*let _=L.build_store op var ibuilder in*)
+          op
         | PreInc -> 
           let var=
             match unpack e with
@@ -204,6 +224,18 @@ and codegen_re gamma ibuilder e=
     | Call(id, lst) ->
       let f = (Symbol_table.lookup id gamma).llvalue in
       let llargs=List.map (codegen_expr gamma ibuilder) lst in 
+      let array_to_ptr llvalue=
+        begin
+        match L.classify_type (L.element_type (L.type_of llvalue)) with
+        
+        | Array -> 
+        Printf.printf "%s" (L.string_of_llvalue llvalue);
+        flush stdout;
+        Llvm.build_in_bounds_gep llvalue [| (Llvm.const_int int_type 0) ; (Llvm.const_int int_type 0) |] "" ibuilder 
+        | _ -> llvalue
+        end;  
+        in
+      let llargs= List.map (array_to_ptr) llargs in
       L.build_call f (Array.of_list llargs) "" ibuilder
     | _ -> codegen_ae gamma ibuilder e
 (*Add or not terminator depending on last instruction (terminal) *)
@@ -211,7 +243,7 @@ let add_terminator ibuilder next=
   let terminator= L.block_terminator (L.insertion_block ibuilder) in
         match terminator with
         | Some _ -> ()
-        | None -> ignore(L.build_br next ibuilder)
+        | None -> ignore(next ibuilder)
 
 let rec codegen_stmt current_fun gamma ibuilder e= 
   match unpack e with
@@ -222,7 +254,7 @@ let rec codegen_stmt current_fun gamma ibuilder e=
       let _ = L.build_cond_br te1 bthen bcont ibuilder in
       let te2 =L.position_at_end bthen ibuilder in
       let _ = codegen_stmt current_fun gamma ibuilder st1 in  
-        add_terminator ibuilder bcont;
+        add_terminator ibuilder (L.build_br bcont);
         L.position_at_end bcont ibuilder;
         ibuilder
   | If(e1, st1, st2) ->
@@ -233,24 +265,24 @@ let rec codegen_stmt current_fun gamma ibuilder e=
       let _ = L.build_cond_br te1 bthen belse ibuilder in
       let _ = L.position_at_end bthen ibuilder in
       let te2 = codegen_stmt current_fun gamma ibuilder st1 in 
-      let _ = add_terminator ibuilder bcont in 
+      let _ = add_terminator ibuilder (L.build_br bcont) in 
       let _=L.position_at_end belse ibuilder in
       let te3 = codegen_stmt current_fun gamma ibuilder st2 in 
-      let _ = add_terminator ibuilder bcont in 
+      let _ = add_terminator ibuilder (L.build_br bcont) in 
         L.position_at_end bcont ibuilder;
         ibuilder
         (*Llvm.build_phi [(te2, bthen) ; (te3, belse)] "phi" ibuilder*)
   | While(e, stmt) ->
-      let pred=L.append_block llcontext "while_cond" current_fun in
+      let bcond=L.append_block llcontext "while_cond" current_fun in
       let bwhile=L.append_block llcontext "while_body" current_fun in
       let bcont=L.append_block llcontext "cont" current_fun in
-      let _ = L.build_br pred ibuilder in
-      L.position_at_end pred ibuilder;
+      let _ = L.build_br bcond ibuilder in
+      L.position_at_end bcond ibuilder;
       let re=codegen_expr gamma ibuilder e in
       let _ = L.build_cond_br re bwhile bcont ibuilder in
-      L.position_at_end pred ibuilder;
+      let _= L.position_at_end bwhile ibuilder in
       let body=codegen_stmt current_fun gamma ibuilder stmt in
-      let _=L.build_br pred ibuilder in
+      let _=L.build_br bcond ibuilder in
         L.position_at_end bcont ibuilder;
         ibuilder
     | DoWhile(stmt, e) -> 
@@ -317,11 +349,13 @@ let codegen_fundecl gamma {typ; fname; formals; body;} llmodule=
       let param_alloc=L.build_alloca (formals_type.(i)) id ibuilder in
       let param=L.param fundef i in
       let _=L.build_store param param_alloc ibuilder in
-      ignore(Symbol_table.add_entry id ({llvalue=param_alloc; annotation=Some(id)}) scope);
-      i+1
+        ignore(Symbol_table.add_entry id ({llvalue=param_alloc; annotation=Some(id)}) scope);
+        i+1
     in List.fold_left f 0 formals 
   in
-   ignore(codegen_stmt fundef scope ibuilder body);
+   add_terminator (codegen_stmt fundef scope ibuilder body) (match typ with
+      | TypV -> L.build_ret_void
+      | t -> L.build_ret (L.const_int (return_type) 0));
    fundef
   
 
@@ -330,7 +364,7 @@ let codegen_topdecl gamma e llmodule=
   | Fundecl(f) -> codegen_fundecl gamma f llmodule
   | Vardec(typ, id) -> 
     let tp=lltype_of_type typ in
-    let global=L.declare_global tp id llmodule in
+    let global=L.define_global id (L.const_null tp) llmodule in
     Symbol_table.add_entry id ({llvalue=global; annotation=Some(id)}) gamma;
     global
   (*| Vardecinit(typ, id, expr) -> 
