@@ -131,9 +131,8 @@ and codegen_le gamma ibuilder e=
       begin
         match L.classify_type (L.element_type (L.type_of var)) with
         | Array -> L.build_in_bounds_gep var [|(Llvm.const_int int_type 0); expr |] "" ibuilder 
-        | _ -> 
-        let ptr= L.build_load var "" ibuilder in
-        L.build_gep ptr [| expr |] "" ibuilder 
+        | _ -> let ptr= L.build_load var "" ibuilder in
+                L.build_gep ptr [| expr |] "" ibuilder 
      end
     | _ -> codegen_le gamma ibuilder e
 and codegen_re gamma ibuilder e= 
@@ -246,7 +245,41 @@ let add_terminator ibuilder next=
         | Some _ -> ()
         | None -> ignore(next ibuilder)
 
-let rec codegen_stmt current_fun gamma ibuilder e= 
+let codegen_init tp gamma ibuilder e=
+  match unpack e with
+  | ArrayInit(lst) -> 
+    (*let x=List.length lst in
+    let map=List.map (codegen_expr gamma ibuilder) lst in
+    let tp=L.type_of (List.hd map) in
+    let global=L.declare_global (L.array_type tp x) "" llmodule in
+    let _=L.set_initializer (L.const_array tp (Array.of_list map)) global in
+    let _=L.set_global_constant true global in
+    let _=L.set_linkage Private global in
+    let _=L.set_unnamed_addr true global in
+    global*)
+    let tp=match tp with 
+    |TypA(typ, i) -> 
+        let tp=lltype_of_type typ in
+        begin
+          match i with
+          |None -> L.array_type tp (List.length lst)
+          |Some(x) -> L.array_type tp x
+        end 
+    | _ -> assert false;
+      in
+    let alloca=L.build_alloca tp "" ibuilder in
+    let map=List.map (codegen_expr gamma ibuilder) lst in
+    ignore(List.fold_left (
+      fun counter llvalue -> 
+        let pointer=L.build_in_bounds_gep alloca [| (L.const_int int_type 0) ; (Llvm.const_int int_type counter) |] "" ibuilder in
+              ignore(L.build_store llvalue pointer ibuilder); 
+              counter+1
+              ) 0 map); alloca
+  | _ -> let alloca=L.build_alloca (lltype_of_type tp) "" ibuilder in
+         let value=codegen_expr gamma ibuilder e in
+          ignore(L.build_store value alloca ibuilder); alloca
+
+let rec codegen_stmt  current_fun gamma ibuilder e= 
   match unpack e with
   | If(e1, st1, {node=Block([]); id=id}) -> 
       let bthen = L.append_block llcontext "then" current_fun in 
@@ -318,10 +351,10 @@ let rec codegen_stmt current_fun gamma ibuilder e=
             match unpack y with
               | Stmt(st) -> begin
                             match unpack st with
-                            | Return(_) -> (codegen_stmtordec current_fun gamma ibuilder y, true);
-                            | _ -> (codegen_stmtordec current_fun gamma ibuilder y, cond)
+                            | Return(_) -> (codegen_stmtordec  current_fun gamma ibuilder y, true);
+                            | _ -> (codegen_stmtordec  current_fun gamma ibuilder y, cond)
                             end
-              | _ -> (codegen_stmtordec current_fun gamma ibuilder y, cond)) 
+              | _ -> (codegen_stmtordec  current_fun gamma ibuilder y, cond)) 
           (ibuilder, false) lst);
         ibuilder
 and codegen_stmtordec current_fun gamma ibuilder e=
@@ -333,13 +366,12 @@ and codegen_stmtordec current_fun gamma ibuilder e=
           Symbol_table.add_entry id ({llvalue=local; annotation=Some(id)}) gamma;
           ibuilder
     | Stmt(st) -> codegen_stmt current_fun gamma ibuilder st; ibuilder
-    (*| Decinit(typ, id, ex) -> 
-        let tp=lltype_of_type typ in
-        let local=L.build_alloca tp id ibuilder in
-        let init=codegen_init gamma ibuilder e in
-        let _ = L.build_store init local ibuilder in
+    | Decinit(typ, id, ex) -> 
+        (*let tp=lltype_of_type typ in
+        let local=L.build_alloca tp id ibuilder in*)
+        let local=codegen_init typ gamma ibuilder ex in
           Symbol_table.add_entry id ({llvalue=local; annotation=Some(id)}) gamma;
-          ibuilder*)
+          ibuilder
   
 let codegen_fundecl gamma {typ; fname; formals; body;} llmodule=
   let return_type = lltype_of_type typ in 

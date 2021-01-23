@@ -206,7 +206,7 @@ rexpr:
   | e1 = expr EQ e2 = expr
     { BinaryOp(Equal, e1, e2) |@| $loc }
   | e1 = expr NEQ e2 = expr
-    { BinaryOp(Equal, e1, e2) |@| $loc }
+    { BinaryOp(Neq, e1, e2) |@| $loc }
   | e1 = expr L_OR e2 = expr
     { BinaryOp(Or, e1, e2) |@| $loc }
   | e1 = expr L_AND e2 = expr
