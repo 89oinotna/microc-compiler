@@ -14,8 +14,10 @@ let unpack ann_node=
   | { loc; node; id} -> node
   | _  -> assert false
 
-let type_eq a b=
+let rec type_eq a b=
   match a, b with
+  | Tarr(ttyp1, Tvoid, _), Tarr(ttyp2, _, _) 
+  | Tarr(ttyp1, _, _), Tarr(ttyp2, Tvoid, _) -> type_eq ttyp1 ttyp2
   | Tptr(_), Tnull 
   | Tnull, Tptr(_) -> true
   | a, b -> (a=b)
@@ -141,16 +143,17 @@ let rec type_of_expr gamma e=
   | Call(id, expr_lst) -> 
       let fun_typ=
         match Symbol_table.lookup id gamma with
-        | {ttype; annotation} -> ttype
+        | {ttype; annotation} -> Printf.printf "%s" (show_ttype ttype); ttype
       in   
       let rec check_args f_tp args=
         match f_tp, args with
         | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
-                                else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
+                                else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id ^ (show_ttype tp) ))
         | Tfun(tp, tp'), x::[] -> if (type_eq tp (type_of_expr gamma x)) then tp' 
-                                  else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
-        | Tfun(tp, tp'), x::xs -> if (type_eq tp (type_of_expr gamma x)) then check_args tp' xs 
-                                  else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id))
+                                  else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id ^ (show_ttype tp)))
+        | Tfun(tp, tp'), x::xs -> let arg_tp=(type_of_expr gamma x) in
+        if (type_eq tp arg_tp) then check_args tp' xs 
+                                  else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id^ (show_ttype tp) ^ (show_ttype arg_tp)))
         | _ -> (Util.raise_semantic_error e.loc ("error in args of function " ^ id))
       in 
       check_args fun_typ expr_lst
@@ -355,22 +358,23 @@ let type_of_topdecl gamma e=
     in      
     (* fun type *)
     let ftyp=type_of_typ scope typ in
-    (*body*)
-    let btyp=type_of_function_body scope body in  
-    if (type_eq ftyp btyp) then(*end block*) 
-      let fun_tp= (* build fun type and insert it in the scope *)
+    (* needed for recursion *)
+    let fun_tp= (* build fun type and insert it in the scope *)
         let rec build_tp ls =
           match ls with
-          | [] -> Tfun(Tvoid, btyp)
-          | x::[] -> Tfun(x, btyp)
+          | [] -> Tfun(Tvoid, ftyp)
+          | x::[] -> Tfun(x, ftyp)
           | x::xs -> Tfun(x, build_tp xs)
         in
         build_tp formals_tp
-      in 
-      begin 
-        Symbol_table.add_entry fname {ttype=fun_tp; annotation=None} gamma;
-        fun_tp
-      end 
+        in
+     let _=
+         Symbol_table.add_entry fname {ttype=fun_tp; annotation=None} gamma
+      in
+    (*body*)
+    let btyp=type_of_function_body scope body in  
+    if (type_eq ftyp btyp) then
+      fun_tp
     else (Util.raise_semantic_error e.loc ("Return type doesn't match function type "^fname))
   | Vardec(typ, id) -> 
       begin
