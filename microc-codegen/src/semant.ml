@@ -36,19 +36,19 @@ match op with
 | Or ->"||"
 | _ -> assert false        
 
-let rec type_of_typ gamma e=
-  match e with
+let rec type_of_typ gamma e tp=
+  match tp with
   | TypA(tp, i) ->  let i_typ=
                       match i with
                       | Some(x:int) -> Tint (*TODO*)
                       | None -> Tvoid (* solo se come arg in funzione o declaration *)
                     in
-                    Tarr(type_of_typ gamma tp, i_typ, i)
-  | TypP(tp) -> Tptr(type_of_typ gamma tp)
+                    Tarr(type_of_typ gamma e tp, i_typ, i)
+  | TypP(tp) -> Tptr(type_of_typ gamma e tp)
   | TypI -> Tint
   | TypB -> Tbool
   | TypC -> Tchar
-  | TypV -> Tvoid
+  | TypV -> (Util.raise_semantic_error e.loc "Cannot assign void type")
 
 let rec type_of_expr gamma e=
   let rec type_of_access gamma e=
@@ -241,13 +241,13 @@ let rec type_of_stmt gamma fun_typ e=
                         end 
         | _ -> ()
       end;
-        let tp=type_of_typ gamma typ in
+        let tp=type_of_typ gamma e typ in
         begin
           ignore(Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma)
         end
     | Stmt(st) -> ignore(type_of_stmt gamma fun_typ st); ()
     | Decinit(typ, id, ex) ->
-      let tp=type_of_typ gamma typ in
+      let tp=type_of_typ gamma e typ in
       let _=match tp with
             | Tarr(_, Tvoid, _) -> ()
             | Tarr(_, _, _) -> (Util.raise_semantic_error e.loc ("Array initialization doesn't need array lenght"))
@@ -265,7 +265,7 @@ let rec type_of_stmt gamma fun_typ e=
           (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
      
 
-let type_of_topdecl gamma e=
+let rec type_of_topdecl gamma e=
   match unpack e with
   | Fundecl({typ; fname; formals; body}) ->
     (*args are in function's scope*)
@@ -276,7 +276,7 @@ let type_of_topdecl gamma e=
           match formal with
           | (TypV, _) -> (Util.raise_semantic_error e.loc "Cannot use void type")
           | (tp, id) -> 
-            let tp1=(type_of_typ scope tp)
+            let tp1=(type_of_typ scope e tp)
             in
             begin
               ignore(Symbol_table.add_entry id {ttype=tp1; annotation=None} scope); 
@@ -286,7 +286,11 @@ let type_of_topdecl gamma e=
         List.map f formals
     in      
     (* fun type *)
-    let ftyp=type_of_typ scope typ in
+    let ftyp=
+          match typ with 
+            |  TypV -> Tvoid
+            | _ -> type_of_typ scope e typ 
+      in
     (* needed for recursion *)
     let fun_tp= (* build fun type and insert it in the scope *)
         let rec build_tp ls =
@@ -316,19 +320,21 @@ let type_of_topdecl gamma e=
                         end 
         | _ -> ()
       end;
-      let tp=type_of_typ gamma typ in
+      let tp=type_of_typ gamma e typ in
       begin
         ignore(Symbol_table.add_entry id {ttype=tp; annotation=None} gamma);
         tp
       end
   | Vardecinit(typ, id, expr) ->
-      let tp=type_of_typ gamma typ in
+      let tp=type_of_typ gamma e typ in
       let _=match tp with
+            
             | Tarr(_, Tvoid, _) -> ()
             | Tarr(_, _, _) -> (Util.raise_semantic_error e.loc ("Array initialization doesn't need array lenght"))
             | _ -> ()
           in
-      let i_tp=type_of_expr gamma expr in
+      (* Only constant initializers *)
+      let i_tp=const_expr gamma expr in
       if (type_eq tp i_tp) then
         begin
           ignore(Symbol_table.add_entry id {ttype=tp; annotation=None} gamma);
@@ -339,6 +345,74 @@ let type_of_topdecl gamma e=
         | Tarr(_, _, Some(x)), Tarr(_, _, Some(y)) -> (Util.raise_semantic_error e.loc ("Wrong size on array declaration "^id))
         | _ ->
           (Util.raise_semantic_error e.loc ("Wrong type on variable declaration "^id))
+and  const_expr gamma e=
+  match unpack e with
+  | ILiteral(_) -> Tint
+  | BLiteral(_) -> Tbool
+  | CLiteral(_) -> Tchar
+  | UnaryOp(uop, e) -> 
+    let op_typ= 
+      match uop with
+      | Neg -> Tfun(Tint, Tint)
+      | Not -> 
+        begin
+          match Symbol_table.lookup "!" gamma with
+          | {ttype; annotation} -> ttype
+        end
+      | _ -> (Util.raise_semantic_error e.loc ("Not supported for constants" ^ (show_uop uop)))
+      in
+    let e_typ=const_expr gamma e in
+    begin
+      match op_typ with
+      | Tfun(tp1, tp2) -> if (type_eq tp1 e_typ) then tp2 else (Util.raise_semantic_error e.loc ("Wrong type for" ^ (show_uop uop)))
+      | _ -> assert false
+    end
+  | BinaryOp(Equal, e1, e2) 
+  | BinaryOp(Neq, e1, e2) ->
+      let typ1=const_expr gamma e1 in
+      if (type_eq typ1 (const_expr gamma e2)) then Tbool
+      else (Util.raise_semantic_error e.loc ("Wrong type for" ^ (show_binop Equal)))
+   | BinaryOp(binop, e1, e2) ->
+      let e1_tp=const_expr gamma e1 in
+      let e2_tp=const_expr gamma e2 in
+      let op_typ=
+        match Symbol_table.lookup (binop_to_key binop) gamma with
+        | {ttype; annotation} -> ttype in 
+      begin
+      match op_typ with
+        | Tfun(tp1, Tfun(tp2, tres)) ->
+          if ((type_eq tp1 e1_tp) && (type_eq tp2 e2_tp)) then tres else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ (show_binop binop)))
+        | _ -> assert false
+      end
+  | ArrayInit(ls) -> 
+    let tp_ht= Hashtbl.create 0 in
+    begin
+      let f x=
+          let x_pt=const_expr gamma x in
+          begin
+            try
+              ignore(Hashtbl.find tp_ht x_pt); ()
+            with
+            | Not_found -> (Hashtbl.add tp_ht x_pt None)
+          end
+        in
+      List.iter f ls;
+      if (Hashtbl.length tp_ht) = 1 then (* must be 1 type *)
+        begin
+          let tp=
+            let fol key value lst= key::lst
+            in 
+            Hashtbl.fold fol tp_ht []
+          in
+          match tp with
+            | x::[] -> Tarr(x, Tint, Some(List.length ls))
+            | _ -> assert false
+        end
+      else
+        (Util.raise_semantic_error e.loc "Invalid array initializer type")
+      
+    end
+  |_ -> (Util.raise_semantic_error e.loc ("Not a constant "))
 
 
 
@@ -372,4 +446,10 @@ let check (Prog(topdecls)) =
     | [] ->  Tvoid
     | x::xs -> ignore(type_of_topdecl scope x); scan xs scope
     in
-  scan topdecls scope;
+  begin
+  ignore(scan topdecls scope);
+  try
+    Symbol_table.lookup "main" scope
+  with
+  | _ -> (Util.raise_semantic_error (List.hd topdecls).loc ("No main definition"))
+  end

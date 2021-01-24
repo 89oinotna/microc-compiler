@@ -11,8 +11,6 @@ let empty_table = Empty
 *)
 
 
-(*let scope_list=ref [|empty_table|]*)
-
 let begin_block (table: 'a t)  = 
   match table with
   | Empty -> Table(Empty, (Hashtbl.create 1))
@@ -29,7 +27,7 @@ let add_entry symbol info (table: 'a t) =
   | Empty -> assert false
   | Table(parent, vars) as x ->
     try
-      let tp=Hashtbl.find vars symbol
+      let _=Hashtbl.find vars symbol
           in raise DuplicateEntry
     with
     | Not_found -> 
