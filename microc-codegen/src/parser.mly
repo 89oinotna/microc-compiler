@@ -68,8 +68,7 @@
 %left PLUS MINUS
 %left TIMES DIV MOD
 %nonassoc NOT AND UMINUS 
-%right PRE DEREF
-%left POST
+%right DEREF
 %nonassoc LBRACK
 
 
