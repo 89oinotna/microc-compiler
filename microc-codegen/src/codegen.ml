@@ -424,12 +424,9 @@ and evaluate_const gamma e=
       let op=
       if
        match binop with
-        | Add 
-        | Sub 
-        | Mult 
-        | Div  
-        | Mod -> true
-        | _ -> false then (binop_int binop) e1 e2
+        | And
+        | Or-> false
+        | _ -> true then (binop_int binop) e1 e2
       else (if ((binop_bool binop) e1 e2) then 1 else 0) in
       op 
   |_ -> (Util.raise_semantic_error e.loc ("Not a constant "))
@@ -440,15 +437,19 @@ and binop_int op=
   | Mult -> (+)
   | Div  -> (/)
   | Mod -> (mod)
+  | Less -> fun x y -> Bool.to_int (x < y) 
+  | Leq -> fun x y -> Bool.to_int ( x <= y) 
+  | Greater -> fun x y -> Bool.to_int ( x > y ) 
+  | Geq -> fun x y -> Bool.to_int ( x >= y) 
+  | Equal -> fun x y -> Bool.to_int ( x = y ) 
   |_ -> assert false
-and binop_bool op=
+and binop_bool op e1 e2=
+let to_bool e=if e=1 then true else false in
  match op with
-  | Less -> (<)
-  | Leq -> (<=)
-  | Greater -> (>) 
-  | Geq -> (>=)
-  | Equal ->(=)
+  | And -> to_bool e1 && to_bool e2
+  | Or -> to_bool e1 || to_bool e2
   |_ -> assert false
+  
 
 
 let rec codegen_topdecl gamma e llmodule=
