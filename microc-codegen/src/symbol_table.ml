@@ -17,8 +17,10 @@ let begin_block (table: 'a t)  =
   | x -> Table(x, (Hashtbl.create 1)) (* return table of new block *)
 
 
-let end_block (Table (parent, vars)) =
-  parent
+let end_block tb =
+  match tb with
+  | Empty -> Empty
+  | Table (parent, vars) -> parent
 
 let add_entry symbol info (table: 'a t) = 
 (*if it is in the same scope => error
@@ -35,12 +37,15 @@ let add_entry symbol info (table: 'a t) =
             x
   
 
-let rec lookup symbol (Table (parent, vars)) = 
-  try Hashtbl.find vars symbol with
-  | Not_found -> 
-    match parent with 
-    | Empty ->raise (Nf symbol)
-    | x -> lookup symbol parent
+let rec lookup symbol tb = 
+  match tb with
+  | Empty -> raise (Nf symbol)
+  |(Table (parent, vars)) ->
+      try Hashtbl.find vars symbol with
+      | Not_found -> 
+        match parent with 
+        | Empty ->raise (Nf symbol)
+        | x -> lookup symbol parent
     
 
 (*let rec lookup symbol table = Hashtbl.find symbol base_table*)

@@ -25,7 +25,6 @@
   let funcblock b=
     match b with
     |{loc; node; id} -> {loc;node;id=1}
-    |_ -> assert false
 
   let compose f (g, s)=((fun x -> g(f(x))), s) (* using to compose with functions *)
   
