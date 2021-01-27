@@ -2,17 +2,23 @@ open Ast
 open Sast
 open Symbol_table
 
+(* The entry type for the symbol table *)
 type 'a entry_table={
   ttype:'a; 
   annotation: string option
 }
-  [@@deriving show]
+[@@deriving show]
 
-
+(* Used to "unpack" a node means extract only the node value *)
 let unpack ann_node=
   match ann_node with
   | { loc; node; id} -> node
 
+(* Used to compare types
+   Ensures:
+   array comparison ex. int arr[] == int arr[1] (for function params)
+   pointer comparison ex int *p == NULL
+ *)
 let rec type_eq a b=
   match a, b with
   | Tarr(ttyp1, Tvoid, _), Tarr(ttyp2, _, _) 
@@ -21,62 +27,59 @@ let rec type_eq a b=
   | Tnull, Tptr(_) -> true
   | a, b -> (a=b)
 
+(* base table used for built in operations/keywords *)
+let base=[
+  ("+", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("-", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("*", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("/", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("%", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
+  ("<", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
+  (">", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation=None});
+  ("<=", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
+  (">=", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
+  ("||", {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
+  ("&&", {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
+  ("!", {ttype=Tfun(Tbool, Tbool); annotation= None});
+  ("print", {ttype=Tfun(Tint, Tvoid); annotation= None});
+  ("getint", {ttype=Tfun(Tvoid, Tint); annotation= None});
+  ("NULL", {ttype=Tnull; annotation= None});
+]
+
+(* Used to retrieve from Ast.binop the key in the base table *)
 let binop_to_key op=
 match op with
 | Add -> "+"
-| Sub ->"-"
-| Mult ->"*"
-| Div  ->"/"
-| Mod ->"%"
+| Sub -> "-"
+| Mult -> "*"
+| Div  -> "/"
+| Mod -> "%"
 | Less -> "<"
 | Leq -> "<="
 | Greater -> ">" 
 | Geq -> ">="
-| And ->"&&"
-| Or ->"||"
+| And -> "&&"
+| Or -> "||"
 | _ -> assert false        
 
+(*Used to "resolve" Ast.typ -> Sast.ttype  *)
 let rec type_of_typ gamma e tp=
   match tp with
   | TypA(tp, i) ->  let i_typ=
                       match i with
-                      | Some(x:int) -> Tint (*TODO*)
-                      | None -> Tvoid (* solo se come arg in funzione o declaration *)
+                      | Some(x:int) -> Tint
+                      | None -> Tvoid (* only in functions param or init declaration *)
                     in
                     Tarr(type_of_typ gamma e tp, i_typ, i)
   | TypP(tp) -> Tptr(type_of_typ gamma e tp)
   | TypI -> Tint
   | TypB -> Tbool
   | TypC -> Tchar
-  | TypV -> (Util.raise_semantic_error e.loc "Cannot assign void type")
+  (* only functions can have void type *)
+  | TypV -> (Util.raise_semantic_error e.loc "Can't use void type")
+
 
 let rec type_of_expr gamma e=
-  let rec type_of_access gamma e=
-    match unpack e with
-    | AccVar(id) -> begin
-                    try 
-                      match Symbol_table.lookup id gamma with
-                      | {ttype; annotation} -> ttype
-                    with
-                      |_ -> (Util.raise_semantic_error e.loc "Variable not in scope")
-                    end
-    | AccDeref(ex) -> 
-      let tp=type_of_expr gamma ex 
-      in
-      begin
-      match tp with
-        | Tptr(typ) -> typ
-        | _ -> (Util.raise_semantic_error e.loc "Dereferencing a non pointer")
-      end
-    | AccIndex(a, ex) -> 
-      let a_typ=type_of_access gamma a in
-      match a_typ with
-      | Tarr(a_typ, _, _) -> (*maybe error if index is > array size*)
-        if (type_of_expr gamma ex) = Tint then
-          a_typ
-        else  (Util.raise_semantic_error e.loc "Index is not an int")
-      | _ ->  (Util.raise_semantic_error e.loc "Not an array")
-  in
   match unpack e with
   | Access(a)  -> type_of_access gamma a
   | OpAssign(_, a, ex) -> 
@@ -85,17 +88,18 @@ let rec type_of_expr gamma e=
     if (type_eq a_typ e_typ) then
       match a_typ, e_typ with
       | Tint, _  -> a_typ
-      | tp, _ -> (Util.raise_semantic_error e.loc ("Cannot operator assign type "^(show_ttype tp)))
+      (* Operator assignments only on int *)
+      | tp, _ -> (Util.raise_semantic_error e.loc ("Can't operator assign type "^(show_ttype tp)))
     else
-      (Util.raise_semantic_error e.loc "Lvalue must be the same type of rvalue")   
+      (Util.raise_semantic_error e.loc "Lvalue must be the same type of rvalue (int)")   
   | Assign(a, ex) -> 
     let a_typ=type_of_access gamma a in
     let e_typ=type_of_expr gamma ex in
         if (type_eq a_typ e_typ) then 
           match a_typ, e_typ with
-          | Tarr(_), _ -> (Util.raise_semantic_error e.loc "Cannot assign Array type")
+          | Tarr(_), _ -> (Util.raise_semantic_error e.loc "Can't assign Array type")
           | _, _  -> a_typ
-        else (Util.raise_semantic_error e.loc "type error on assignment")
+        else (Util.raise_semantic_error e.loc ("Type error on assignment: trying to assign "^(show_ttype e_typ)^" to a type "^(show_ttype a_typ)))
   | Addr(a) -> 
     let a_typ=type_of_access gamma a in
     Tptr(a_typ)
@@ -123,8 +127,9 @@ let rec type_of_expr gamma e=
   | BinaryOp(Equal, e1, e2) 
   | BinaryOp(Neq, e1, e2) ->
       let typ1=type_of_expr gamma e1 in
-      if (type_eq typ1 (type_of_expr gamma e2)) then Tbool
-      else (Util.raise_semantic_error e.loc ("Wrong type for" ^ (show_binop Equal)))
+      let typ2=type_of_expr gamma e2 in
+      if (type_eq typ1 typ2) then Tbool
+      else (Util.raise_semantic_error e.loc ("Operator needs the same types: " ^ (show_ttype typ1)^", " ^(show_ttype typ2)))
   | BinaryOp(binop, e1, e2) ->
       let e1_tp=type_of_expr gamma e1 in
       let e2_tp=type_of_expr gamma e2 in
@@ -182,6 +187,31 @@ let rec type_of_expr gamma e=
         (Util.raise_semantic_error e.loc "Invalid array initializer type")
       
     end
+and type_of_access gamma e=
+    match unpack e with
+    | AccVar(id) -> begin
+                    try 
+                      match Symbol_table.lookup id gamma with
+                      | {ttype; annotation} -> ttype
+                    with
+                      |_ -> (Util.raise_semantic_error e.loc "Variable not in scope")
+                    end
+    | AccDeref(ex) -> 
+      let tp=type_of_expr gamma ex 
+      in
+      begin
+      match tp with
+        | Tptr(typ) -> typ
+        | _ -> (Util.raise_semantic_error e.loc "Dereferencing a non pointer")
+      end
+    | AccIndex(a, ex) -> 
+      let a_typ=type_of_access gamma a in
+      match a_typ with
+      | Tarr(a_typ, _, _) -> (*maybe error if index is > array size*)
+        if (type_of_expr gamma ex) = Tint then
+          a_typ
+        else  (Util.raise_semantic_error e.loc "Index is not an int")
+      | _ ->  (Util.raise_semantic_error e.loc "Not an array")
 
 
 let rec type_of_stmt gamma fun_typ e=
@@ -216,7 +246,6 @@ let rec type_of_stmt gamma fun_typ e=
       | None -> Tvoid
       | Some(x) -> let tp=type_of_expr gamma x in 
                     match tp with
-                    | Tvoid 
                     | Tint
                     | Tchar
                     | Tbool-> tp
@@ -226,7 +255,8 @@ let rec type_of_stmt gamma fun_typ e=
     if type_eq ret_tp fun_typ then ret_tp
     else (Util.raise_semantic_error e.loc ("Return type " ^ (show_ttype ret_tp)^" not matching function type "  ^ (show_ttype fun_typ)))
   | Block(lst) -> 
-    List.iter (type_of_stmtordec gamma fun_typ) lst; fun_typ
+    let scope=Symbol_table.begin_block gamma in
+    List.iter (type_of_stmtordec scope fun_typ) lst; fun_typ
       
  and type_of_stmtordec gamma fun_typ e=
     match unpack e with
@@ -288,7 +318,7 @@ let rec type_of_topdecl gamma e=
     (* fun type *)
     let ftyp=
           match typ with 
-            |  TypV -> Tvoid
+            |  TypV -> Tvoid (* Only functions can have void type *)
             | _ -> type_of_typ scope e typ 
       in
     (* needed for recursion *)
@@ -416,23 +446,7 @@ and  const_expr gamma e=
 
 
 
-let base=[
-  ("+", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("-", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("*", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("/", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("%", {ttype=Tfun(Tint, Tfun(Tint, Tint)); annotation= None});
-  ("<", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
-  (">", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation=None});
-  ("<=", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
-  (">=", {ttype=Tfun(Tint, Tfun(Tint, Tbool)); annotation= None});
-  ("||", {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
-  ("&&", {ttype=Tfun(Tbool, Tfun(Tbool, Tbool)); annotation= None});
-  ("!", {ttype=Tfun(Tbool, Tbool); annotation= None});
-  ("print", {ttype=Tfun(Tint, Tvoid); annotation= None});
-  ("getint", {ttype=Tfun(Tvoid, Tint); annotation= None});
-  ("NULL", {ttype=Tnull; annotation= None});
-]
+
  
 
 (* add return type of the main *)

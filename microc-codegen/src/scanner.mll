@@ -1,6 +1,5 @@
 {
     open Parser
-  (*| '\''                   {read_char lexbuf}*)
     exception Lexing_error of string
     exception Char_error
     let create_hashtable size init =
@@ -54,7 +53,6 @@ rule token = parse
   | id as word             {
                             try
                               Hashtbl.find keyword_table word
-                              
                             with Not_found ->  ID(word)
                            }
   
@@ -101,6 +99,10 @@ rule token = parse
   | eof                    { EOF }
   | _ as c           { Util.raise_lexer_error lexbuf ("Illegal character " ^ Char.escaped c) }
 
+(* Function used to read the comment
+   if tp=0 then we are reading a multiline comment
+   if tp=1 then we are reading a single line comment
+*)
 and read_comment tp = parse
   | eof                     { if tp=0 then 
                                 Util.raise_lexer_error lexbuf ("Comments not closed") 

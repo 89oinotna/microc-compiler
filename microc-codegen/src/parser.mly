@@ -4,30 +4,13 @@
 
 %{
     open Ast
-
-    (* Define here your utility functions 
-
-        | IF LPAREN cond=expr RPAREN st1=stmt
-                                        {If(cond, st1, Block()) |@| $loc}
-                                          | FOR LPAREN e1=option(expr) SEMICOLON e2=option(expr) SEMICOLON e3=option(expr) RPAREN LBRACE body=list(stmtordec) RBRACE 
-                                        {Block([
-                                          Stmt(e1) |@| $loc;
-                                          Stmt( 
-                                            While(e2, 
-                                              Block(body@(Stmt(e3) |@| $loc)) |@| $loc
-                                            ) |@| $loc
-                                          )|@| $loc
-                                        ]) |@| $loc}
-                                        
-*)
+               
   let (|@|) nd loc = { node = nd; loc = loc ; id=0} 
 
-  let funcblock b=
-    match b with
-    |{loc; node; id} -> {loc;node;id=1}
-
-  let compose f (g, s)=((fun x -> g(f(x))), s) (* using to compose with functions *)
+  (* used to compose types *)
+  let compose f (g, s)=((fun x -> g(f(x))), s) 
   
+  (*These are used for the for guard creation*)
   let for_init opt loc=
     match opt with
     | Some(x) -> Stmt(Expr(x) |@| loc) |@| loc
@@ -42,7 +25,7 @@
     | None -> Stmt(Block([])|@| loc) |@| loc
 %}
 
-/* Tokens declarations TODO Remember to add null*/
+/* Tokens declarations */
 
 
 %token EOF
@@ -113,7 +96,7 @@ vardesc: (* functions in the couple to reconstruct the type*)
 
 fundecl:
   | tp=typ id=ID LPAREN fd=separated_list(COMMA, vardecl) RPAREN b=block
-                                      {{typ=tp; fname=id; formals=fd; body=(funcblock b)}}
+                                      {{typ=tp; fname=id; formals=fd; body=b}}
 ;
 
 stmtordec:
@@ -122,6 +105,7 @@ stmtordec:
   | vd=vardecinit SEMICOLON {Decinit(fst vd, fst (snd vd), snd (snd vd)) |@| $loc}
 ;
 
+/* Using this we ensure that only a Block is parsed */
 block:
   | LBRACE lst=list(stmtordec) RBRACE {Block(lst) |@| $loc}
 ;
@@ -137,20 +121,18 @@ block_stmt:
 stmt:
   | IF LPAREN cond=expr RPAREN st1=block_stmt ELSE st2=block_stmt      
                                         {If(cond, st1, st2) |@| $loc}
-  | WHILE LPAREN cond=expr RPAREN st=block_stmt(*LBRACE body=list(stmtordec) RBRACE*)
+  | WHILE LPAREN cond=expr RPAREN st=block_stmt
                                         {While(cond, st) |@| $loc}
   | DO st=block_stmt WHILE LPAREN cond=expr RPAREN SEMICOLON
                                         {DoWhile(st, cond) |@| $loc}
   | FOR LPAREN e1=option(expr) SEMICOLON e2=option(expr) SEMICOLON e3=option(expr) RPAREN st=block_stmt (* LBRACE body=list(stmtordec) RBRACE *)
                                         {Block([
-                                          for_init e1 $loc
-                                          ;
+                                          for_init e1 $loc;
                                           Stmt( 
                                             While(for_cond e2 $loc, 
-                                                  Block(
-                                                    [(Stmt(st)|@| $loc); 
-                                                    for_exp e3 $loc])|@| $loc
-                                              (*Block(body@[Stmt(Expr(e3)|@| $loc) |@| $loc]) |@| $loc*)
+                                                  Block([(Stmt(st)|@| $loc); 
+                                                        for_exp e3 $loc
+                                                  ]) |@| $loc
                                             ) |@| $loc
                                           )|@| $loc
                                         ]) |@| $loc}

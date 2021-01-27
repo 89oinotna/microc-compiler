@@ -2,8 +2,6 @@ type binop = Add | Sub | Mult | Div  | Mod | Equal | Neq | Less | Leq |
              Greater | Geq | And | Or | Comma 
              [@@deriving show]
 
-(*type assign_op = Assign_plus | Assign_minus | Assign_mul | Assign_div | Assign_mod [@@deriving show] *)
-
 type uop = Neg | Not | PreInc | PreDec | PostInc | PostDec [@@deriving show]
 
 

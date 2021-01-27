@@ -325,6 +325,7 @@ let rec codegen_stmt  current_fun gamma ibuilder e=
     end);
     ibuilder
   | Block(lst) -> 
+    let scope= Symbol_table.begin_block gamma in
       ignore(List.fold_left (
         fun (ibuilder, cond) y -> 
           if cond then (ibuilder, cond)
@@ -332,10 +333,10 @@ let rec codegen_stmt  current_fun gamma ibuilder e=
             match unpack y with
               | Stmt(st) -> begin
                             match unpack st with
-                            | Return(_) -> (codegen_stmtordec  current_fun gamma ibuilder y, true);
-                            | _ -> (codegen_stmtordec  current_fun gamma ibuilder y, cond)
+                            | Return(_) -> (codegen_stmtordec  current_fun scope ibuilder y, true);
+                            | _ -> (codegen_stmtordec  current_fun scope ibuilder y, cond)
                             end
-              | _ -> (codegen_stmtordec  current_fun gamma ibuilder y, cond)) 
+              | _ -> (codegen_stmtordec  current_fun scope ibuilder y, cond)) 
           (ibuilder, false) lst);
         ibuilder
 and codegen_stmtordec current_fun gamma ibuilder e=
@@ -386,15 +387,6 @@ let codegen_fundecl gamma {typ; fname; formals; body;} llmodule=
 let rec codegen_init tp gamma llmodule e=
   match unpack e with
   | ArrayInit(lst) ->
-    (*let x=List.length lst in
-    let map=List.map (codegen_expr gamma ibuilder) lst in
-    let tp=L.type_of (List.hd map) in
-    let global=L.declare_global (L.array_type tp x) "" llmodule in
-    let _=L.set_initializer (L.const_array tp (Array.of_list map)) global in
-    let _=L.set_global_constant true global in
-    let _=L.set_linkage Private global in
-    let _=L.set_unnamed_addr true global in
-    global*)
     let map=List.map (evaluate_const gamma) lst in
     let map=List.map (L.const_int (L.element_type tp)) map in
     L.const_array tp (Array.of_list map)
