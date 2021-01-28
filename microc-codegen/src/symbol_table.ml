@@ -1,9 +1,8 @@
 
 exception DuplicateEntry
-exception Nf of string
 
 
-type 'a t = Empty | Table of 'a t * (string, 'a) Hashtbl.t (* parent * vars *) (* TODO: this is a dummy definition *)
+type 'a t = Empty | Table of 'a t * (string, 'a) Hashtbl.t (* parent * vars *) 
 
 let empty_table = Empty
 (* used to store all key -> entry 
@@ -39,12 +38,12 @@ let add_entry symbol info (table: 'a t) =
 
 let rec lookup symbol tb = 
   match tb with
-  | Empty -> raise (Nf symbol)
+  | Empty -> raise Not_found
   |(Table (parent, vars)) ->
       try Hashtbl.find vars symbol with
       | Not_found -> 
         match parent with 
-        | Empty ->raise (Nf symbol)
+        | Empty ->raise Not_found
         | x -> lookup symbol parent
     
 

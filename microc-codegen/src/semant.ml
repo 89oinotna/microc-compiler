@@ -143,10 +143,7 @@ let rec type_of_expr gamma e=
         | _ -> assert false
       end
   | Call(id, expr_lst) -> 
-      let fun_typ=
-        match Symbol_table.lookup id gamma with
-        | {ttype; annotation} -> (*Printf.printf "%s" (show_ttype ttype);*) ttype
-      in   
+      let fun_typ=(Symbol_table.lookup id gamma).ttype in   
       let rec check_args f_tp args=
         match f_tp, args with
         | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
@@ -463,7 +460,11 @@ let check (Prog(topdecls)) =
   begin
   ignore(scan topdecls scope);
   try
-    Symbol_table.lookup "main" scope
+    let tp=(Symbol_table.lookup "main" scope).ttype in
+    match tp with
+    | Tfun(Tvoid, Tint)
+    | Tfun(Tvoid, Tvoid) -> ()
+    | _ ->(Util.raise_semantic_error (List.hd topdecls).loc ("Wrong type for main definition"))
   with
-  | _ -> (Util.raise_semantic_error (List.hd topdecls).loc ("No main definition"))
+  | Not_found -> (Util.raise_semantic_error (List.hd topdecls).loc ("No main definition"))
   end

@@ -43,7 +43,7 @@ let rec lltype_of_type = function
 let primitive_operators = 
   [ Add, (L.build_add, "add") 
   ; Mult, (L.build_mul, "mul")
-  ; Sub, (L.build_sub, "mul")
+  ; Sub, (L.build_sub, "sub")
   ; Div, (L.build_sdiv, "div")
   ; Mod, (L.build_srem, "mod")
   ; Less, (L.build_icmp L.Icmp.Slt, "less")
@@ -52,8 +52,8 @@ let primitive_operators =
   ; Geq, (L.build_icmp L.Icmp.Sge, "geq")
   ; Equal, (L.build_icmp L.Icmp.Eq, "equal")
   ; Neq, (L.build_icmp L.Icmp.Ne, "neq")
-  ; And, (L.build_and, "neq")
-  ; Or, (L.build_or, "neq")
+  ; And, (L.build_and, "and")
+  ; Or, (L.build_or, "or")
   ]
 
 let rec codegen_expr gamma ibuilder e=
@@ -164,7 +164,7 @@ and codegen_re gamma ibuilder e=
             |_ -> assert false
             in
           let var_val= L.build_load var "" ibuilder in
-          let op=L.build_sub (L.const_int int_type 1) var_val "" ibuilder in
+          let op=L.build_sub var_val (L.const_int int_type 1) "" ibuilder in
           let _=L.build_store op var ibuilder in
           op
         | PostInc ->
@@ -184,7 +184,7 @@ and codegen_re gamma ibuilder e=
             |_ -> assert false
             in
           let var_val= L.build_load var "" ibuilder in
-          let op=L.build_sub (L.const_int int_type 1) var_val "" ibuilder in
+          let op=L.build_sub var_val (L.const_int int_type 1) "" ibuilder in
           let _=L.build_store op var ibuilder in
           var_val
       end

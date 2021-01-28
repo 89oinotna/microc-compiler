@@ -18,7 +18,7 @@
   let for_cond opt loc=
     match opt with
     | Some(x) -> x
-    | None -> ILiteral(1) |@| loc
+    | None -> BLiteral(true) |@| loc
   let for_exp opt loc=
     match opt with
     | Some(x) -> Stmt(Expr(x)|@| loc) |@| loc
@@ -41,7 +41,8 @@
 
 
 /* Precedence and associativity specification */
-
+%left IF
+%left ELSE
 %right ASSIGN 
 %left L_OR
 %left L_AND
@@ -110,22 +111,18 @@ block:
   | LBRACE lst=list(stmtordec) RBRACE {Block(lst) |@| $loc}
 ;
 
-block_stmt:
+
+stmt:
   | e=expr SEMICOLON                     {Expr(e) |@| $loc}
   | RETURN e=option(expr) SEMICOLON       {Return(e) |@| $loc}
   | b=block                     {b}
-  | IF LPAREN cond=expr RPAREN st1=block_stmt  
-                                {If(cond, st1, Block([])|@| $loc) |@| $loc}
-;
-
-stmt:
-  | IF LPAREN cond=expr RPAREN st1=block_stmt ELSE st2=block_stmt      
-                                        {If(cond, st1, st2) |@| $loc}
-  | WHILE LPAREN cond=expr RPAREN st=block_stmt
+  | IF LPAREN cond=expr RPAREN st1=stmt  el=elseb 
+                                        {If(cond, st1, el) |@| $loc}
+  | WHILE LPAREN cond=expr RPAREN st=stmt
                                         {While(cond, st) |@| $loc}
-  | DO st=block_stmt WHILE LPAREN cond=expr RPAREN SEMICOLON
+  | DO st=stmt WHILE LPAREN cond=expr RPAREN SEMICOLON
                                         {DoWhile(st, cond) |@| $loc}
-  | FOR LPAREN e1=option(expr) SEMICOLON e2=option(expr) SEMICOLON e3=option(expr) RPAREN st=block_stmt (* LBRACE body=list(stmtordec) RBRACE *)
+  | FOR LPAREN e1=option(expr) SEMICOLON e2=option(expr) SEMICOLON e3=option(expr) RPAREN st=stmt 
                                         {Block([
                                           for_init e1 $loc;
                                           Stmt( 
@@ -136,7 +133,11 @@ stmt:
                                             ) |@| $loc
                                           )|@| $loc
                                         ]) |@| $loc}
-  | st=block_stmt                       {st}
+;
+
+elseb:
+  | %prec IF{Block([])|@| $loc}
+  | ELSE st2=stmt  {st2}
 ;
 
 
