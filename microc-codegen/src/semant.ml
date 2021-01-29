@@ -16,8 +16,8 @@ let unpack ann_node=
 
 (* Used to compare types
    Ensures:
-   array comparison ex. int arr[] == int arr[1] (for function params)
-   pointer comparison ex int *p == NULL
+    - array comparison ex. int arr[] == int arr[1] (for function params)
+    - null pointer comparison ex int *p == NULL
  *)
 let rec type_eq a b=
   match a, b with
@@ -153,7 +153,7 @@ let rec type_of_expr gamma e=
         | Tfun(tp, tp'), x::xs -> let arg_tp=(type_of_expr gamma x) in
         if (type_eq tp arg_tp) then check_args tp' xs 
                                   else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ id^ (show_ttype tp) ^ (show_ttype arg_tp)))
-        | _ -> (Util.raise_semantic_error e.loc ("error in args of function " ^ id))
+        | _ -> (Util.raise_semantic_error e.loc ("Not a function " ^ id))
       in 
       check_args fun_typ expr_lst
   | ArrayInit(ls) -> 
@@ -295,14 +295,18 @@ let rec type_of_stmt gamma fun_typ e=
 let rec type_of_topdecl gamma e=
   match unpack e with
   | Fundecl({typ; fname; formals; body}) ->
+    (* Can't define built in functions *)
+    let _=try 
+            ignore(Symbol_table.lookup fname gamma);
+            (Util.raise_semantic_error e.loc ("Trying to define a built in function "^fname))
+          with
+          | Not_found -> () 
+      in
     (*args are in function's scope*)
     let scope=Symbol_table.begin_block gamma in
     (* put args in the scope and type check them*)
     let formals_tp=
-        let f formal=
-          match formal with
-          | (TypV, _) -> (Util.raise_semantic_error e.loc "Cannot use void type")
-          | (tp, id) -> 
+        let f  (tp, id)= 
             let tp1=(type_of_typ scope e tp)
             in
             begin
@@ -315,7 +319,9 @@ let rec type_of_topdecl gamma e=
     (* fun type *)
     let ftyp=
           match typ with 
-            |  TypV -> Tvoid (* Only functions can have void type *)
+            | TypP(_) -> (Util.raise_semantic_error e.loc "Functions can't return pointer")
+            | TypA(_) -> (Util.raise_semantic_error e.loc "Functions can't return array")
+            | TypV -> Tvoid (* Only functions can have void type *)
             | _ -> type_of_typ scope e typ 
       in
     (* needed for recursion *)
@@ -347,6 +353,13 @@ let rec type_of_topdecl gamma e=
                         end 
         | _ -> ()
       end;
+      (* Can't define built in functions *)
+      let _=try 
+            ignore(Symbol_table.lookup id gamma);
+            (Util.raise_semantic_error e.loc ("Trying to define a built in function "^id))
+          with
+          | Not_found -> () 
+      in
       let tp=type_of_typ gamma e typ in
       begin
         ignore(Symbol_table.add_entry id {ttype=tp; annotation=None} gamma);
@@ -360,6 +373,13 @@ let rec type_of_topdecl gamma e=
             | Tarr(_, _, _) -> (Util.raise_semantic_error e.loc ("Array initialization doesn't need array lenght"))
             | _ -> ()
           in
+      (* Can't define built in functions *)
+      let _=try 
+        ignore(Symbol_table.lookup id gamma);
+        (Util.raise_semantic_error e.loc ("Trying to define a built in function "^id))
+      with
+      | Not_found -> () 
+      in
       (* Only constant initializers *)
       let i_tp=const_expr gamma expr in
       if (type_eq tp i_tp) then
@@ -448,19 +468,19 @@ and  const_expr gamma e=
 
 (* add return type of the main *)
 let check (Prog(topdecls)) = 
-  let top_scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
-  let f (x, y)= ignore(Symbol_table.add_entry x y top_scope); () in
+  let builtin_scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
+  let f (x, y)= ignore(Symbol_table.add_entry x y builtin_scope); () in
   let _=  List.iter f base in
-  let scope=(Symbol_table.begin_block(top_scope)) in
-  let rec scan lst scope=
+  let top_scope=(Symbol_table.begin_block(builtin_scope)) in
+  let rec scan lst top_scope=
     match lst with
     | [] ->  Tvoid
-    | x::xs -> ignore(type_of_topdecl scope x); scan xs scope
+    | x::xs -> ignore(type_of_topdecl top_scope x); scan xs top_scope
     in
   begin
-  ignore(scan topdecls scope);
+  ignore(scan topdecls top_scope);
   try
-    let tp=(Symbol_table.lookup "main" scope).ttype in
+    let tp=(Symbol_table.lookup "main" top_scope).ttype in
     match tp with
     | Tfun(Tvoid, Tint)
     | Tfun(Tvoid, Tvoid) -> ()
