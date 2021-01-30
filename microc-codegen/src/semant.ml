@@ -70,7 +70,12 @@ let rec type_of_typ gamma e tp=
                       | Some(x:int) -> Tint
                       | None -> Tvoid (* only in functions param or init declaration *)
                     in
-                    Tarr(type_of_typ gamma e tp, i_typ, i)
+                    let tp=type_of_typ gamma e tp in
+                    begin
+                      match tp with
+                      | Tarr(_) -> (Util.raise_semantic_error e.loc "Multi-dimensional arrays are not supported")
+                      | _ -> Tarr(tp, i_typ, i)
+                    end
   | TypP(tp) -> Tptr(type_of_typ gamma e tp)
   | TypI -> Tint
   | TypB -> Tbool
@@ -349,7 +354,6 @@ let rec type_of_topdecl gamma e=
                         match i with
                         | Some(x:int) -> if x>0 then () else (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
                         | None -> (Util.raise_semantic_error e.loc ("Array must have size > 0 "))
-                        
                         end 
         | _ -> ()
       end;
@@ -459,7 +463,7 @@ and  const_expr gamma e=
         (Util.raise_semantic_error e.loc "Invalid array initializer type")
       
     end
-  |_ -> (Util.raise_semantic_error e.loc ("Not a constant "))
+  |_ -> (Util.raise_semantic_error e.loc ("Not a constant"))
 
 
 

@@ -119,40 +119,29 @@ and codegen_re gamma ibuilder e=
     | OpAssign(op, le, e) -> 
       let (llvm_operator, label)=List.assoc op primitive_operators in
       let var=codegen_le gamma ibuilder le in
-      let var_value= L.build_load var ""(*"opassign "^id*) ibuilder in
+      let var_value= L.build_load var "" ibuilder in
       let expr= codegen_expr gamma ibuilder e in
       let res= llvm_operator var_value expr label ibuilder in
-      L.build_store res var ibuilder
+      let _=L.build_store res var ibuilder in
+      L.build_load var "" ibuilder
     | UnaryOp(uop, e) ->
       begin
         match uop with
         | Not -> 
-          let var=codegen_expr gamma ibuilder e
-            (*match unpack e with
-            | Access(le) -> codegen_le gamma ibuilder le
-            |_ -> assert false
-            in
-          let var_val= L.build_load var "" ibuilder*) in
+          let var=codegen_expr gamma ibuilder e in
           let op=L.build_not var "" ibuilder in
-          (*let _=L.build_store op var ibuilder in*)
           op
         | Neg -> 
-          let var=codegen_expr gamma ibuilder e(*
-            match unpack e with
-            | Access(le) -> codegen_le gamma ibuilder le
-            |_ -> assert false
-            in
-          let var_val= L.build_load var "" ibuilder *)in
+          let var=codegen_expr gamma ibuilder e in
           let op=L.build_neg var "" ibuilder in
-          (*let _=L.build_store op var ibuilder in*)
           op
         | PreInc -> 
           let var=
+            (* needed otherwise the codegen_expr access loads it*)
             match unpack e with
             | Access(le) -> codegen_le gamma ibuilder le
             |_ -> assert false
             in
-          (*let var=codegen_expr gamma ibuilder e in*)
           let var_val= L.build_load var "" ibuilder in
           let op=L.build_add (L.const_int int_type 1) var_val "" ibuilder in
           let _=L.build_store op var ibuilder in
@@ -204,7 +193,7 @@ and codegen_re gamma ibuilder e=
     | Call(id, lst) ->
       let f = (Symbol_table.lookup id gamma).llvalue in
       let llargs=List.map (codegen_expr gamma ibuilder) lst in 
-      let array_to_ptr (counter, lst) llvalue =(counter +1, (
+      let remap (counter, lst) llvalue =(counter +1, (
         begin
         match L.classify_type (L.element_type (L.type_of llvalue)) with
         | Array -> 
@@ -217,10 +206,13 @@ and codegen_re gamma ibuilder e=
                   else llvalue
         end)::lst)
         in
-      let llargs=List.rev (snd (List.fold_left (array_to_ptr) (0, []) llargs)) in
+      let llargs=List.rev (snd (List.fold_left (remap) (0, []) llargs)) in
       L.build_call f (Array.of_list llargs) "" ibuilder
     | _ -> codegen_ae gamma ibuilder e
-(*Add or not terminator depending on last instruction (terminal) *)
+
+(*Add or not terminator depending on last instruction (terminal) 
+  Next: the terminal operation to add if needed
+*)
 let add_terminator ibuilder next=
   let terminator= L.block_terminator (L.insertion_block ibuilder) in
         match terminator with
@@ -384,62 +376,45 @@ let codegen_fundecl gamma {typ; fname; formals; body;} llmodule=
       | t -> L.build_ret (L.const_int (return_type) 0));
    fundef
   
+let const_primitive_operators = 
+    [ Add, (L.const_add, "add") 
+    ; Mult, (L.const_mul, "mul")
+    ; Sub, (L.const_sub, "sub")
+    ; Div, (L.const_sdiv, "div")
+    ; Mod, (L.const_srem, "mod")
+    ; Less, (L.const_icmp L.Icmp.Slt, "less")
+    ; Leq, (L.const_icmp L.Icmp.Sle, "leq")
+    ; Greater, (L.const_icmp L.Icmp.Sgt, "greater")
+    ; Geq, (L.const_icmp L.Icmp.Sge, "geq")
+    ; Equal, (L.const_icmp L.Icmp.Eq, "equal")
+    ; Neq, (L.const_icmp L.Icmp.Ne, "neq")
+    ; And, (L.const_and, "and")
+    ; Or, (L.const_or, "or")
+    ]
+
+
 let rec codegen_init tp gamma llmodule e=
   match unpack e with
   | ArrayInit(lst) ->
     let map=List.map (evaluate_const gamma) lst in
-    let map=List.map (L.const_int (L.element_type tp)) map in
     L.const_array tp (Array.of_list map)
-  | _ -> L.const_int tp (evaluate_const gamma e)
+  | _ -> evaluate_const gamma e
 and evaluate_const gamma e=
   match unpack e with
-  | ILiteral(i) -> i
-  | BLiteral(b) -> (if b then 1 else 0)
-  | CLiteral(c) -> (int_of_char c)
+  | ILiteral(i) -> L.const_int int_type i
+  | BLiteral(b) -> L.const_int bool_type (if b then 1 else 0)
+  | CLiteral(c) -> L.const_int char_type (int_of_char c)
   | UnaryOp(Neg, e) -> 
-    let eval=evaluate_const gamma e in
-    0 - eval
+    let value=evaluate_const gamma e in
+    L.const_neg value
   | UnaryOp(Not, e) -> 
-    let eval=evaluate_const gamma e in
-    (if eval=1 then 0 else 1)
-  | BinaryOp(Equal, e1, e2) ->
-    let eval1=evaluate_const gamma e1 in
-    let eval2=evaluate_const gamma e1 in
-    if (eval1=eval2) then 1 else 0
-  | BinaryOp(Neq, e1, e2) ->
-    let eval1=evaluate_const gamma e1 in
-    let eval2=evaluate_const gamma e1 in
-    if not (eval1=eval2) then 1 else 0
+    let value=evaluate_const gamma e in
+    L.const_not value
   | BinaryOp(binop, e1, e2) ->
-      let e1=evaluate_const gamma e1 in
-      let e2=evaluate_const gamma e2 in
-      let op=
-      if
-       match binop with
-        | And
-        | Or-> false
-        | _ -> true then (binop_int binop) e1 e2
-      else (if ((binop_bool binop) e1 e2) then 1 else 0) in
-      op 
-  |_ -> (Util.raise_semantic_error e.loc ("Not a constant "))
-and binop_int op=
-  match op with
-  | Add -> (+)
-  | Sub -> (-)
-  | Mult -> (+)
-  | Div  -> (/)
-  | Mod -> (mod)
-  | Less -> fun x y -> Bool.to_int (x < y) 
-  | Leq -> fun x y -> Bool.to_int ( x <= y) 
-  | Greater -> fun x y -> Bool.to_int ( x > y ) 
-  | Geq -> fun x y -> Bool.to_int ( x >= y) 
-  | Equal -> fun x y -> Bool.to_int ( x = y ) 
-  |_ -> assert false
-and binop_bool op e1 e2=
-let to_bool e=if e=1 then true else false in
- match op with
-  | And -> to_bool e1 && to_bool e2
-  | Or -> to_bool e1 || to_bool e2
+    let e1=evaluate_const gamma e1 in
+    let e2=evaluate_const gamma e2 in
+    let (op, id)=List.assoc  binop const_primitive_operators
+    in op e1 e2
   |_ -> assert false
   
 
@@ -472,15 +447,15 @@ let getint_declaration llvm_module scope =
   Symbol_table.add_entry "getint" ({llvalue=decl; annotation=None}) scope           
 
 let to_ir (Prog(topdecls)) =
-  let scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
+  let top_scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
   let llmodule = L.create_module llcontext "microc-module" in 
-    print_declaration llmodule scope |> ignore;
-    getint_declaration llmodule scope |> ignore;
+    print_declaration llmodule top_scope |> ignore;
+    getint_declaration llmodule top_scope |> ignore;
     let rec scan lst scope llmodule=
       match lst with
       | x::[] -> codegen_topdecl scope x llmodule
       | x::xs -> ignore(codegen_topdecl scope x llmodule); scan xs scope llmodule
       | [] -> assert false
       in
-    ignore(scan topdecls scope llmodule);
+    ignore(scan topdecls top_scope llmodule);
     llmodule
