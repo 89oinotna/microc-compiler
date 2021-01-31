@@ -148,7 +148,11 @@ let rec type_of_expr gamma e=
         | _ -> assert false
       end
   | Call(id, expr_lst) -> 
-      let fun_typ=(Symbol_table.lookup id gamma).ttype in   
+      let fun_typ=
+      try (Symbol_table.lookup id gamma).ttype
+      with
+        | Not_found -> (Util.raise_semantic_error e.loc ("Not defined " ^ id))
+      in   
       let rec check_args f_tp args=
         match f_tp, args with
         | Tfun(tp, tp'), [] -> if tp=Tvoid then tp' 
@@ -196,7 +200,7 @@ and type_of_access gamma e=
                       match Symbol_table.lookup id gamma with
                       | {ttype; annotation} -> ttype
                     with
-                      |_ -> (Util.raise_semantic_error e.loc "Variable not in scope")
+                      |_ -> (Util.raise_semantic_error e.loc ("Variable not in scope: "^id))
                     end
     | AccDeref(ex) -> 
       let tp=type_of_expr gamma ex 
@@ -275,7 +279,10 @@ let rec type_of_stmt gamma fun_typ e=
       end;
         let tp=type_of_typ gamma e typ in
         begin
-          ignore(Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma)
+          try
+            ignore(Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma)
+          with
+          | DuplicateEntry -> (Util.raise_semantic_error e.loc ("Duplicate name: "^id))
         end
     | Stmt(st) -> ignore(type_of_stmt gamma fun_typ st); ()
     | Decinit(typ, id, ex) ->
@@ -288,7 +295,10 @@ let rec type_of_stmt gamma fun_typ e=
       let e_tp=type_of_expr gamma ex in
       if (type_eq tp e_tp) then
         begin
+          try
           ignore(Symbol_table.add_entry id ({ttype=tp; annotation=None}) gamma)
+          with
+          | DuplicateEntry -> (Util.raise_semantic_error e.loc ("Duplicate name: "^id))
         end
       else
         match tp, e_tp with
@@ -315,8 +325,11 @@ let rec type_of_topdecl gamma e=
             let tp1=(type_of_typ scope e tp)
             in
             begin
+              try
               ignore(Symbol_table.add_entry id {ttype=tp1; annotation=None} scope); 
               tp1
+              with
+              | DuplicateEntry -> (Util.raise_semantic_error e.loc ("Duplicate name: "^id))
             end
         in 
         List.map f formals
@@ -340,14 +353,14 @@ let rec type_of_topdecl gamma e=
         build_tp formals_tp
     in
     let _=
+        try
         Symbol_table.add_entry fname {ttype=fun_tp; annotation=None} gamma
+        with
+        | DuplicateEntry -> (Util.raise_semantic_error e.loc ("Duplicate name: "^fname))
     in
     (*body*)
     let _=type_of_stmt scope ftyp body in fun_tp 
-    (*if (type_eq ftyp btyp) then
-      fun_tp
-    else (Util.raise_semantic_error e.loc ("Return type doesn't match function type "^fname))
-  *)| Vardec(typ, id) -> 
+  | Vardec(typ, id) -> 
       begin
         match typ with
         | TypA(tp, i) -> begin
@@ -366,8 +379,11 @@ let rec type_of_topdecl gamma e=
       in
       let tp=type_of_typ gamma e typ in
       begin
+        try
         ignore(Symbol_table.add_entry id {ttype=tp; annotation=None} gamma);
         tp
+        with
+        | DuplicateEntry -> (Util.raise_semantic_error e.loc ("Duplicate name: "^id))
       end
   | Vardecinit(typ, id, expr) ->
       let tp=type_of_typ gamma e typ in
@@ -388,8 +404,11 @@ let rec type_of_topdecl gamma e=
       let i_tp=const_expr gamma expr in
       if (type_eq tp i_tp) then
         begin
+          try
           ignore(Symbol_table.add_entry id {ttype=tp; annotation=None} gamma);
           tp 
+          with
+          | DuplicateEntry -> (Util.raise_semantic_error e.loc ("Duplicate name: "^id))
         end
       else
         match tp, i_tp with
@@ -432,7 +451,8 @@ and  const_expr gamma e=
       begin
       match op_typ with
         | Tfun(tp1, Tfun(tp2, tres)) ->
-          if ((type_eq tp1 e1_tp) && (type_eq tp2 e2_tp)) then tres else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ (show_binop binop)))
+          if ((type_eq tp1 e1_tp) && (type_eq tp2 e2_tp)) then tres 
+          else (Util.raise_semantic_error e.loc ("error in the arguments of " ^ (show_binop binop)))
         | _ -> assert false
       end
   | ArrayInit(ls) -> 
@@ -466,10 +486,6 @@ and  const_expr gamma e=
   |_ -> (Util.raise_semantic_error e.loc ("Not a constant"))
 
 
-
-
- 
-
 (* add return type of the main *)
 let check (Prog(topdecls)) = 
   let builtin_scope=(Symbol_table.begin_block(Symbol_table.empty_table)) in
@@ -486,6 +502,8 @@ let check (Prog(topdecls)) =
   try
     let tp=(Symbol_table.lookup "main" top_scope).ttype in
     match tp with
+    | Tfun(Tint, Tint)
+    | Tfun(Tint, Tvoid)
     | Tfun(Tvoid, Tint)
     | Tfun(Tvoid, Tvoid) -> ()
     | _ ->(Util.raise_semantic_error (List.hd topdecls).loc ("Wrong type for main definition"))

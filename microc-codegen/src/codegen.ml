@@ -56,6 +56,7 @@ let primitive_operators =
   ; Or, (L.build_or, "or")
   ]
 
+(* Codegen for expr node *)
 let rec codegen_expr gamma ibuilder e=
       match unpack e with
       | Access(le) -> 
@@ -376,6 +377,7 @@ let codegen_fundecl gamma {typ; fname; formals; body;} llmodule=
       | t -> L.build_ret (L.const_int (return_type) 0));
    fundef
   
+(* List of LLVM const operations for the global variable initialization*)
 let const_primitive_operators = 
     [ Add, (L.const_add, "add") 
     ; Mult, (L.const_mul, "mul")

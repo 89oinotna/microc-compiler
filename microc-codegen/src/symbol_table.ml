@@ -5,9 +5,6 @@ exception DuplicateEntry
 type 'a t = Empty | Table of 'a t * (string, 'a) Hashtbl.t (* parent * vars *) 
 
 let empty_table = Empty
-(* used to store all key -> entry 
-    It has every time all the binding until current scope
-*)
 
 
 let begin_block (table: 'a t)  = 

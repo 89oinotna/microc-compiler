@@ -42,7 +42,7 @@
 let digit = ['0'-'9']
 let one_to_nine = ['1'-'9']
 let int = (one_to_nine digit*) | '0'
-let char=['a'-'z' 'A'-'Z' '0'-'9']
+let char=([^'\\'] | ('\\' ('\\' | 'n' | 'b' | 't' | 'r')))
 let id = ['a'-'z' 'A'-'Z' '_']['_' 'a'-'z' 'A'-'Z' '0'-'9']*
 
 rule token = parse
@@ -56,7 +56,7 @@ rule token = parse
                             with Not_found ->  ID(word)
                            }
   
-  |"'" ([^'\\'] | ('\\' ('\\' | 'n' | 'b' | 't' | 'r'))) as c "'" {try LCHAR(read_char c)
+  |"'" char as c "'" {try LCHAR(read_char c)
                                                                     with
                                                                     |Char_error -> Util.raise_lexer_error lexbuf ("Illegal character " ^  c)}
   | "/*"                   {read_comment 0 lexbuf}
